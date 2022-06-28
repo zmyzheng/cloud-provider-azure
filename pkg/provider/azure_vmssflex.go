@@ -15,3 +15,12 @@ limitations under the License.
 */
 
 package provider
+
+import azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
+
+// FlexScaleSet implements VMSet interface for Azure Flexible VMSS.
+type FlexScaleSet struct {
+	*Cloud
+
+	vmssFlexCache *azcache.TimedCache
+}

@@ -77,6 +77,10 @@ type ScaleSet struct {
 	vmssCache                 *azcache.TimedCache
 	vmssVMCache               *sync.Map // [resourcegroup/vmssname]*azcache.TimedCache
 	availabilitySetNodesCache *azcache.TimedCache
+
+	flexScaleSet    *FlexScaleSet
+	vmssFlexVMCache *azcache.TimedCache
+
 	// lockMap in cache refresh
 	lockMap *lockMap
 }
