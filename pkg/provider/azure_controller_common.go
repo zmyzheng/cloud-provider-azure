@@ -134,8 +134,19 @@ func (c *controllerCommon) getNodeVMSet(nodeName types.NodeName, crt azcache.Azu
 		return ss.availabilitySet, nil
 	}
 
-	// 4. Node is managed by vmss
+	// 4. If the node is managed by vmss flex, then return ss.flexScaleSet.
+	managedByVmssFlex, err := ss.isNodeManagedByVmssFlex(mapNodeNameToVMName(nodeName), crt)
+	if err != nil {
+		return nil, err
+	}
+	if managedByVmssFlex {
+		// vm is managed by vmss flex.
+		return ss.flexScaleSet, nil
+	}
+
+	// 5. Node is managed by vmss
 	return ss, nil
+
 }
 
 // AttachDisk attaches a disk to vm
