@@ -145,6 +145,10 @@ const (
 	VMSSVirtualMachinesCacheTTLDefaultInSeconds = 600
 	// VMASCacheTTLDefaultInSeconds is the TTL of the vmas cache
 	VMASCacheTTLDefaultInSeconds = 600
+	// VmssFlexVMCacheKey is the key when querying vmssFlexVM cache
+	VmssFlexNodesCacheKey = "k8sVmssFlexNodesKey"
+	// VmssFlexNodesCacheTTLDefaultInSeconds is the TTL of the vmss flex node cache
+	VmssFlexNodesCacheTTLDefaultInSeconds = 900
 
 	// ZoneFetchingInterval defines the interval of performing zoneClient.GetZones
 	ZoneFetchingInterval = 30 * time.Minute

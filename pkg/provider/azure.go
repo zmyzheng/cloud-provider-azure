@@ -216,6 +216,9 @@ type Config struct {
 	CloudProviderBackoffDuration int `json:"cloudProviderBackoffDuration,omitempty" yaml:"cloudProviderBackoffDuration,omitempty"`
 	// AvailabilitySetNodesCacheTTLInSeconds sets the Cache TTL for availabilitySetNodesCache
 	// if not set, will use default value
+	VmssFlexNodesCacheTTLInSeconds int `json:"vmssFlexNodesCacheTTLInSeconds,omitempty" yaml:"vmssFlexNodesCacheTTLInSeconds,omitempty"`
+	// VmssFlexNodesCacheTTLInSeconds sets the Cache TTL for vmssFlexNodesCacheTTLInSeconds
+	// if not set, will use default value
 	AvailabilitySetNodesCacheTTLInSeconds int `json:"availabilitySetNodesCacheTTLInSeconds,omitempty" yaml:"availabilitySetNodesCacheTTLInSeconds,omitempty"`
 	// VmssCacheTTLInSeconds sets the cache TTL for VMSS
 	VmssCacheTTLInSeconds int `json:"vmssCacheTTLInSeconds,omitempty" yaml:"vmssCacheTTLInSeconds,omitempty"`
