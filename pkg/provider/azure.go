@@ -222,6 +222,8 @@ type Config struct {
 	AvailabilitySetNodesCacheTTLInSeconds int `json:"availabilitySetNodesCacheTTLInSeconds,omitempty" yaml:"availabilitySetNodesCacheTTLInSeconds,omitempty"`
 	// VmssCacheTTLInSeconds sets the cache TTL for VMSS
 	VmssCacheTTLInSeconds int `json:"vmssCacheTTLInSeconds,omitempty" yaml:"vmssCacheTTLInSeconds,omitempty"`
+	// VmssFlexCacheTTLDefaultInSeconds sets the cache TTL for VMSS Flex
+	VmssFlexCacheTTLDefaultInSeconds int `json:"VmssFlexCacheTTLDefaultInSeconds,omitempty" yaml:"VmssFlexCacheTTLDefaultInSeconds,omitempty"`
 	// VmssVirtualMachinesCacheTTLInSeconds sets the cache TTL for vmssVirtualMachines
 	VmssVirtualMachinesCacheTTLInSeconds int `json:"vmssVirtualMachinesCacheTTLInSeconds,omitempty" yaml:"vmssVirtualMachinesCacheTTLInSeconds,omitempty"`
 	// VmCacheTTLInSeconds sets the cache TTL for vm

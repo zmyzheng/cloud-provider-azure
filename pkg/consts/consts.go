@@ -137,6 +137,10 @@ const (
 	VMASKey = "k8svmasKey"
 	// AvailabilitySetNodesKey is the availability set nodes key
 	AvailabilitySetNodesKey = "k8sAvailabilitySetNodesKey"
+	// VmssFlexNodesKey is the key when querying vmssFlexVM cache
+	VmssFlexNodesKey = "k8sVmssFlexNodesKey"
+	// VmssFlexKey is the key when querying vmssFlexVM cache
+	VmssFlexKey = "k8sVmssFlexKey"
 	// AvailabilitySetNodesCacheTTLDefaultInSeconds is the TTL of the availabilitySet node cache
 	AvailabilitySetNodesCacheTTLDefaultInSeconds = 900
 	// VMSSCacheTTLDefaultInSeconds is the TTL of the vmss cache
@@ -145,8 +149,9 @@ const (
 	VMSSVirtualMachinesCacheTTLDefaultInSeconds = 600
 	// VMASCacheTTLDefaultInSeconds is the TTL of the vmas cache
 	VMASCacheTTLDefaultInSeconds = 600
-	// VmssFlexVMCacheKey is the key when querying vmssFlexVM cache
-	VmssFlexNodesCacheKey = "k8sVmssFlexNodesKey"
+	// VmssFlexCacheTTLDefaultInSeconds is the TTL of the vmss flex cache
+	VmssFlexCacheTTLDefaultInSeconds = 600
+
 	// VmssFlexNodesCacheTTLDefaultInSeconds is the TTL of the vmss flex node cache
 	VmssFlexNodesCacheTTLDefaultInSeconds = 900
 

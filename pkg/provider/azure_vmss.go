@@ -1891,7 +1891,7 @@ func (ss *ScaleSet) GetAgentPoolVMSetNames(nodes []*v1.Node) (*[]string, error) 
 			return nil, fmt.Errorf("GetAgentPoolVMSetNames: failed to check if the node %s is managed by VmssFlex: %w", node.Name, err)
 		}
 		if managedByVmssFlex {
-			cached, err := ss.vmssFlexNodesCache.Get(consts.VmssFlexNodesCacheKey, azcache.CacheReadTypeDefault)
+			cached, err := ss.vmssFlexNodesCache.Get(consts.VmssFlexNodesKey, azcache.CacheReadTypeDefault)
 			if err != nil {
 				return nil, fmt.Errorf("GetAgentPoolVMSetNames: failed to get vmssFlexNodesCache")
 			}
