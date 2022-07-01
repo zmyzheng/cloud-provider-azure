@@ -217,7 +217,7 @@ func (c *Client) listVM(ctx context.Context, resourceGroupName string) ([]comput
 	return result, nil
 }
 
-// List gets a list of VirtualMachine in the resourceGroupName.
+// ListVmssFlexVMs gets a list of VirtualMachine in the VMSS Flex.
 func (c *Client) ListVmssFlexVMs(ctx context.Context, resourceGroupName string, vmssFlexID string) ([]compute.VirtualMachine, *retry.Error) {
 	mc := metrics.NewMetricContext("vm", "list", resourceGroupName, c.subscriptionID, "")
 
@@ -248,7 +248,7 @@ func (c *Client) ListVmssFlexVMs(ctx context.Context, resourceGroupName string, 
 	return result, nil
 }
 
-// listVM gets a list of VirtualMachines in the resourceGroupName.
+// listVmssFlexVMs gets a list of VirtualMachines in the VMSS Flex.
 func (c *Client) listVmssFlexVMs(ctx context.Context, resourceGroupName string, vmssFlexID string) ([]compute.VirtualMachine, *retry.Error) {
 	resourceID := armclient.GetResourceListID(c.subscriptionID, resourceGroupName, vmResourceType)
 
