@@ -87,6 +87,10 @@ func (ss *ScaleSet) newVMSSCache() (*azcache.TimedCache, error) {
 					klog.Warning("failed to get the name of VMSS")
 					continue
 				}
+				if scaleSet.OrchestrationMode == compute.OrchestrationModeFlexible {
+					klog.V(2).Infof("Skip Flexible VMSS: (%s)", *scaleSet.Name)
+					continue
+				}
 				localCache.Store(*scaleSet.Name, &vmssEntry{
 					vmss:          &scaleSet,
 					resourceGroup: resourceGroup,
@@ -413,7 +417,7 @@ func (ss *ScaleSet) isNodeManagedByAvailabilitySet(nodeName string, crt azcache.
 }
 
 func (ss *ScaleSet) isNodeManagedByVmssFlex(nodeName string, crt azcache.AzureCacheReadType) (bool, error) {
-	cached, err := ss.vmssFlexNodesCache.Get(consts.VmssFlexNodesCacheKey, crt)
+	cached, err := ss.vmssFlexNodesCache.Get(consts.VmssFlexNodesKey, crt)
 	if err != nil {
 		return false, err
 	}
@@ -423,7 +427,7 @@ func (ss *ScaleSet) isNodeManagedByVmssFlex(nodeName string, crt azcache.AzureCa
 	// if the node is not in the cache, assume the node has joined after the last cache refresh and attempt to refresh the cache.
 	if !cachedNodes.Has(nodeName) {
 		klog.V(2).Infof("Node %s has joined the cluster since the last VM cache refresh, refreshing the cache", nodeName)
-		cached, err = ss.vmssFlexNodesCache.Get(consts.VmssFlexNodesCacheKey, azcache.CacheReadTypeForceRefresh)
+		cached, err = ss.vmssFlexNodesCache.Get(consts.VmssFlexNodesKey, azcache.CacheReadTypeForceRefresh)
 		if err != nil {
 			return false, err
 		}
