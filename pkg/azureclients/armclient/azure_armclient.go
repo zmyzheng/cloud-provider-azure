@@ -285,6 +285,13 @@ func (c *Client) GetResourceWithExpandAPIVersionQuery(ctx context.Context, resou
 	return c.Send(ctx, request)
 }
 
+func (c *Client) GetResourceWithFilter(ctx context.Context, resourceID string, filter string) (*http.Response, *retry.Error) {
+	decorators := autorest.WithQueryParameters(map[string]interface{}{
+		"$filter": autorest.Encode("query", filter),
+	})
+	return c.GetResource(ctx, resourceID, decorators)
+}
+
 // GetResourceWithDecorators get a resource with decorators by resource ID
 func (c *Client) GetResource(ctx context.Context, resourceID string, decorators ...autorest.PrepareDecorator) (*http.Response, *retry.Error) {
 	getDecorators := append([]autorest.PrepareDecorator{
