@@ -60,7 +60,7 @@ func (fs *FlexScaleSet) newVmssFlexCache() (*azcache.TimedCache, error) {
 			for i := range allScaleSets {
 				scaleSet := allScaleSets[i]
 				if scaleSet.ID == nil || *scaleSet.ID == "" {
-					klog.Warning("failed to get the ID of VMSS")
+					klog.Warning("failed to get the ID of VMSS Flex")
 					continue
 				}
 
@@ -80,4 +80,32 @@ func (fs *FlexScaleSet) newVmssFlexCache() (*azcache.TimedCache, error) {
 		fs.Config.VmssVirtualMachinesCacheTTLInSeconds = consts.VmssFlexCacheTTLDefaultInSeconds
 	}
 	return azcache.NewTimedcache(time.Duration(fs.Config.VmssVirtualMachinesCacheTTLInSeconds)*time.Second, getter)
+}
+
+func (fs *FlexScaleSet) newVmssFlexVMCache() (*azcache.TimedCache, error) {
+	getter := func(key string) (interface{}, error) {
+		localCache := &sync.Map{}
+
+		resourceGroup, err := fs.GetNodeResourceGroup(key)
+		if err != nil {
+			return nil, err
+		}
+
+		ctx, cancel := getContextWithCancel()
+		defer cancel()
+
+		vms, rerr := fs.VirtualMachinesClient.ListVmssFlexVMs(ctx, resourceGroup, key)
+		if rerr != nil {
+			klog.Errorf("VMSS Flex List failed: %v", rerr)
+			return nil, rerr.Error()
+		}
+
+		localCache.Store(key, &vms)
+		return localCache, nil
+	}
+
+	if fs.Config.VmssFlexVMCacheTTLInSeconds == 0 {
+		fs.Config.VmssFlexVMCacheTTLInSeconds = consts.VmssFlexVMCacheTTLInSeconds
+	}
+	return azcache.NewTimedcache(time.Duration(fs.Config.VmssFlexVMCacheTTLInSeconds)*time.Second, getter)
 }

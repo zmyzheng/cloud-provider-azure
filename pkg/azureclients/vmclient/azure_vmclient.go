@@ -256,7 +256,7 @@ func (c *Client) listVmssFlexVMs(ctx context.Context, resourceGroupName string, 
 	page := &VirtualMachineListResultPage{}
 	page.fn = c.listNextResults
 
-	resp, rerr := c.armClient.GetResourceWithExpandQuery(ctx, resourceID, "virtualMachineScaleSet/id eq "+vmssFlexID)
+	resp, rerr := c.armClient.GetResourceWithExpandQuery(ctx, resourceID, "'virtualMachineScaleSet/id' eq '"+vmssFlexID+"'")
 	defer c.armClient.CloseResponse(ctx, resp)
 	if rerr != nil {
 		klog.V(5).Infof("Received error in %s: resourceID: %s, error: %s", "vm.list.request", resourceID, rerr.Error())
