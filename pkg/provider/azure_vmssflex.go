@@ -29,7 +29,7 @@ import (
 )
 
 var (
-	resourceGroupRE = regexp.MustCompile(`.*/subscriptions/(?:.*)/resourceGroups/(.+)/providers/Microsoft.Compute/virtualMachineScaleSets/(?:.*)`)
+	vmssResourceGroupRE = regexp.MustCompile(`.*/subscriptions/(?:.*)/resourceGroups/(.+)/providers/Microsoft.Compute/virtualMachineScaleSets/(?:.*)`)
 )
 
 // FlexScaleSet implements VMSet interface for Azure Flexible VMSS.
@@ -109,7 +109,14 @@ func (fs *FlexScaleSet) newVmssFlexVMCache() (*azcache.TimedCache, error) {
 			return nil, rerr.Error()
 		}
 
-		localCache.Store(key, &vms)
+		for i := range vms {
+			vm := vms[i]
+			if vm.ID != nil {
+				localCache.Store(*vm.ID, &vm)
+				fs.vmssFlexVMIDToVmssID.Store(*vm.ID, key)
+			}
+		}
+
 		return localCache, nil
 	}
 
@@ -119,8 +126,25 @@ func (fs *FlexScaleSet) newVmssFlexVMCache() (*azcache.TimedCache, error) {
 	return azcache.NewTimedcache(time.Duration(fs.Config.VmssFlexVMCacheTTLInSeconds)*time.Second, getter)
 }
 
+func newFlexScaleSet(az *Cloud) (VMSet, error) {
+	fs := &FlexScaleSet{
+		Cloud:                az,
+		vmssFlexVMIDToVmssID: &sync.Map{},
+		lockMap:              newLockMap(),
+	}
+
+	var err error
+	fs.vmssFlexCache, err = fs.newVmssFlexCache()
+	if err != nil {
+		return nil, err
+	}
+	fs.vmssFlexVMCache, err = fs.newVmssFlexVMCache()
+
+	return fs, nil
+}
+
 func (fs *FlexScaleSet) extractResourceGroupByVmssID(vmssID string) (string, error) {
-	matches := resourceGroupRE.FindStringSubmatch(vmssID)
+	matches := vmssResourceGroupRE.FindStringSubmatch(vmssID)
 	if len(matches) != 2 {
 		return "", ErrorNotVmssInstance
 	}
