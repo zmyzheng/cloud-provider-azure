@@ -18,6 +18,7 @@ package provider
 
 import (
 	"context"
+	"regexp"
 	"sync"
 	"time"
 
@@ -27,13 +28,21 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 )
 
+var (
+	resourceGroupRE = regexp.MustCompile(`.*/subscriptions/(?:.*)/resourceGroups/(.+)/providers/Microsoft.Compute/virtualMachineScaleSets/(?:.*)`)
+)
+
 // FlexScaleSet implements VMSet interface for Azure Flexible VMSS.
 type FlexScaleSet struct {
 	*Cloud
 
 	vmssFlexCache *azcache.TimedCache
 
-	vmssFlexVMCache *azcache.TimedCache
+	vmssFlexVMIDToVmssID *sync.Map
+	vmssFlexVMCache      *azcache.TimedCache
+
+	// lockMap in cache refresh
+	lockMap *lockMap
 }
 
 func (fs *FlexScaleSet) newVmssFlexCache() (*azcache.TimedCache, error) {
@@ -86,7 +95,7 @@ func (fs *FlexScaleSet) newVmssFlexVMCache() (*azcache.TimedCache, error) {
 	getter := func(key string) (interface{}, error) {
 		localCache := &sync.Map{}
 
-		resourceGroup, err := fs.GetNodeResourceGroup(key)
+		resourceGroup, err := fs.extractResourceGroupByVmssID(key)
 		if err != nil {
 			return nil, err
 		}
@@ -108,4 +117,13 @@ func (fs *FlexScaleSet) newVmssFlexVMCache() (*azcache.TimedCache, error) {
 		fs.Config.VmssFlexVMCacheTTLInSeconds = consts.VmssFlexVMCacheTTLInSeconds
 	}
 	return azcache.NewTimedcache(time.Duration(fs.Config.VmssFlexVMCacheTTLInSeconds)*time.Second, getter)
+}
+
+func (fs *FlexScaleSet) extractResourceGroupByVmssID(vmssID string) (string, error) {
+	matches := resourceGroupRE.FindStringSubmatch(vmssID)
+	if len(matches) != 2 {
+		return "", ErrorNotVmssInstance
+	}
+
+	return matches[1], nil
 }
