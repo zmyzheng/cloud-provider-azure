@@ -43,8 +43,11 @@ type Interface interface {
 	// List gets a list of VirtualMachines in the resourceGroupName.
 	List(ctx context.Context, resourceGroupName string) ([]compute.VirtualMachine, *retry.Error)
 
-	// ListVmssFlexVMs gets a list of VirtualMachine in the VMSS Flex.
-	ListVmssFlexVMs(ctx context.Context, resourceGroupName string, vmssFlexID string) ([]compute.VirtualMachine, *retry.Error)
+	// ListVmssFlexVMsWithoutInstanceView gets a list of VirtualMachine in the VMSS Flex without InstanceView.
+	ListVmssFlexVMsWithoutInstanceView(ctx context.Context, vmssFlexID string) ([]compute.VirtualMachine, *retry.Error)
+
+	// ListVmssFlexVMsWithOnlyInstanceView gets a list of VirtualMachine in the VMSS Flex with only InstanceView.
+	ListVmssFlexVMsWithOnlyInstanceView(ctx context.Context, vmssFlexID string) ([]compute.VirtualMachine, *retry.Error)
 
 	// CreateOrUpdate creates or updates a VirtualMachine.
 	CreateOrUpdate(ctx context.Context, resourceGroupName string, VMName string, parameters compute.VirtualMachine, source string) *retry.Error

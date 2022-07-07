@@ -285,10 +285,14 @@ func (c *Client) GetResourceWithExpandAPIVersionQuery(ctx context.Context, resou
 	return c.Send(ctx, request)
 }
 
-func (c *Client) GetResourceWithFilter(ctx context.Context, resourceID string, filter string) (*http.Response, *retry.Error) {
-	decorators := autorest.WithQueryParameters(map[string]interface{}{
-		"$filter": autorest.Encode("query", filter),
-	})
+// GetResourceWithQueries get a resource by resource ID with queries.
+func (c *Client) GetResourceWithQueries(ctx context.Context, resourceID string, queries map[string]interface{}) (*http.Response, *retry.Error) {
+	queryParameters := make(map[string]interface{})
+	for queryKey, queryValue := range queryParameters {
+		queryParameters[queryKey] = autorest.Encode("query", queryValue)
+	}
+
+	decorators := autorest.WithQueryParameters(queryParameters)
 	return c.GetResource(ctx, resourceID, decorators)
 }
 
