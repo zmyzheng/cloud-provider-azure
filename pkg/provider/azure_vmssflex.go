@@ -18,18 +18,21 @@ package provider
 
 import (
 	"context"
-	"regexp"
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
+	"k8s.io/apimachinery/pkg/types"
+	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 )
 
 var (
-	vmssResourceGroupRE = regexp.MustCompile(`.*/subscriptions/(?:.*)/resourceGroups/(.+)/providers/Microsoft.Compute/virtualMachineScaleSets/(?:.*)`)
+	// ErrorNotVmssID indicates the id is not a valid vmss id.
+	ErrorNotVmssID = errors.New("not a valid vmss id")
 )
 
 // FlexScaleSet implements VMSet interface for Azure Flexible VMSS.
@@ -38,8 +41,8 @@ type FlexScaleSet struct {
 
 	vmssFlexCache *azcache.TimedCache
 
-	vmssFlexVMIDToVmssID *sync.Map
-	vmssFlexVMCache      *azcache.TimedCache
+	vmssFlexVMnameToVmssID *sync.Map
+	vmssFlexVMCache        *azcache.TimedCache
 
 	// lockMap in cache refresh
 	lockMap *lockMap
@@ -95,15 +98,10 @@ func (fs *FlexScaleSet) newVmssFlexVMCache() (*azcache.TimedCache, error) {
 	getter := func(key string) (interface{}, error) {
 		localCache := &sync.Map{}
 
-		resourceGroup, err := fs.extractResourceGroupByVmssID(key)
-		if err != nil {
-			return nil, err
-		}
-
 		ctx, cancel := getContextWithCancel()
 		defer cancel()
 
-		vms, rerr := fs.VirtualMachinesClient.ListVmssFlexVMs(ctx, resourceGroup, key)
+		vms, rerr := fs.VirtualMachinesClient.ListVmssFlexVMsWithoutInstanceView(ctx, key)
 		if rerr != nil {
 			klog.Errorf("VMSS Flex List failed: %v", rerr)
 			return nil, rerr.Error()
@@ -112,8 +110,8 @@ func (fs *FlexScaleSet) newVmssFlexVMCache() (*azcache.TimedCache, error) {
 		for i := range vms {
 			vm := vms[i]
 			if vm.ID != nil {
-				localCache.Store(*vm.ID, &vm)
-				fs.vmssFlexVMIDToVmssID.Store(*vm.ID, key)
+				localCache.Store(*vm.Name, &vm)
+				fs.vmssFlexVMnameToVmssID.Store(*vm.Name, key)
 			}
 		}
 
@@ -128,9 +126,9 @@ func (fs *FlexScaleSet) newVmssFlexVMCache() (*azcache.TimedCache, error) {
 
 func newFlexScaleSet(az *Cloud) (VMSet, error) {
 	fs := &FlexScaleSet{
-		Cloud:                az,
-		vmssFlexVMIDToVmssID: &sync.Map{},
-		lockMap:              newLockMap(),
+		Cloud:                  az,
+		vmssFlexVMnameToVmssID: &sync.Map{},
+		lockMap:                newLockMap(),
 	}
 
 	var err error
@@ -143,10 +141,42 @@ func newFlexScaleSet(az *Cloud) (VMSet, error) {
 	return fs, nil
 }
 
+func (fs *FlexScaleSet) getVmssFlexVMWithoutInstanceView(nodeName string) (vm compute.VirtualMachine, err error) {
+	vmssFlexID, ok := fs.vmssFlexVMnameToVmssID.Load(nodeName)
+	if !ok {
+		machine, err := fs.getVirtualMachine(types.NodeName(nodeName), azcache.CacheReadTypeUnsafe)
+		if err != nil {
+			return vm, err
+		}
+		vmssFlexID = machine.VirtualMachineScaleSet.ID
+
+	}
+
+	cached, err := fs.vmssFlexVMCache.Get(vmssFlexID.(string), azcache.CacheReadTypeUnsafe)
+	if err != nil {
+		return vm, err
+	}
+
+	vmMap := cached.(*sync.Map)
+	cachvmedVM, ok := vmMap.Load(nodeName)
+	if !ok {
+		return vm, cloudprovider.InstanceNotFound
+	}
+
+	return *(cachvmedVM.(*compute.VirtualMachine)), nil
+}
+
+// GetInstanceIDByNodeName gets the cloud provider ID by node name.
+// It must return ("", cloudprovider.InstanceNotFound) if the instance does
+// not exist or is no longer running.
+func (fs *FlexScaleSet) GetInstanceIDByNodeName(name string) (string, error) {
+
+}
+
 func (fs *FlexScaleSet) extractResourceGroupByVmssID(vmssID string) (string, error) {
-	matches := vmssResourceGroupRE.FindStringSubmatch(vmssID)
+	matches := azureResourceGroupNameRE.FindStringSubmatch(vmssID)
 	if len(matches) != 2 {
-		return "", ErrorNotVmssInstance
+		return "", ErrorNotVmssID
 	}
 
 	return matches[1], nil
