@@ -170,6 +170,17 @@ func (fs *FlexScaleSet) getVmssFlexVMWithoutInstanceView(nodeName string) (vm co
 // It must return ("", cloudprovider.InstanceNotFound) if the instance does
 // not exist or is no longer running.
 func (fs *FlexScaleSet) GetInstanceIDByNodeName(name string) (string, error) {
+	machine, err := fs.getVmssFlexVMWithoutInstanceView(name)
+	if err != nil {
+		return "", err
+	}
+	resourceID := *machine.ID
+	convertedResourceID, err := convertResourceGroupNameToLower(resourceID)
+	if err != nil {
+		klog.Errorf("convertResourceGroupNameToLower failed with error: %v", err)
+		return "", err
+	}
+	return convertedResourceID, nil
 
 }
 
