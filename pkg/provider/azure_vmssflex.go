@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-08-01/network"
 	"k8s.io/apimachinery/pkg/types"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
@@ -198,6 +199,43 @@ func (fs *FlexScaleSet) GetInstanceTypeByNodeName(name string) (string, error) {
 		return "", fmt.Errorf("HardwareProfile of node(%s) is nil", name)
 	}
 	return string(machine.HardwareProfile.VMSize), nil
+}
+
+// GetPrimaryInterface gets machine primary network interface by node name.
+func (fs *FlexScaleSet) GetPrimaryInterface(nodeName string) (network.Interface, error) {
+	machine, err := fs.getVmssFlexVMWithoutInstanceView(nodeName)
+	if err != nil {
+		klog.Errorf("fs.GetInstanceTypeByNodeName(%s) failed: fs.getVirtualMachine(%s) err=%v", nodeName, nodeName, err)
+		return network.Interface{}, err
+	}
+
+	primaryNicID, err := getPrimaryInterfaceID(machine)
+	if err != nil {
+		return network.Interface{}, err
+	}
+	nicName, err := getLastSegment(primaryNicID, "/")
+	if err != nil {
+		return network.Interface{}, err
+	}
+
+	nicResourceGroup, err := extractResourceGroupByNicID(primaryNicID)
+	if err != nil {
+		return network.Interface{}, err
+	}
+
+	ctx, cancel := getContextWithCancel()
+	defer cancel()
+	nic, rerr := fs.InterfacesClient.Get(ctx, nicResourceGroup, nicName, "")
+	if rerr != nil {
+		return network.Interface{}, rerr.Error()
+	}
+
+	return nic, nil
+}
+
+// GetIPByNodeName gets machine private IP and public IP by node name.
+func (fs *FlexScaleSet) GetIPByNodeName(name string) (string, string, error) {
+
 }
 
 func (fs *FlexScaleSet) extractResourceGroupByVmssID(vmssID string) (string, error) {
