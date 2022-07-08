@@ -160,6 +160,7 @@ func (fs *FlexScaleSet) getVmssFlexVMWithoutInstanceView(nodeName string) (vm co
 	vmMap := cached.(*sync.Map)
 	cachvmedVM, ok := vmMap.Load(nodeName)
 	if !ok {
+		fs.vmssFlexVMnameToVmssID.Delete(nodeName)
 		return vm, cloudprovider.InstanceNotFound
 	}
 
