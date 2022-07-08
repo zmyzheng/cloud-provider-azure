@@ -19,6 +19,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -183,6 +184,20 @@ func (fs *FlexScaleSet) GetInstanceIDByNodeName(name string) (string, error) {
 	}
 	return convertedResourceID, nil
 
+}
+
+// GetInstanceTypeByNodeName gets the instance type by node name.
+func (fs *FlexScaleSet) GetInstanceTypeByNodeName(name string) (string, error) {
+	machine, err := fs.getVmssFlexVMWithoutInstanceView(name)
+	if err != nil {
+		klog.Errorf("fs.GetInstanceTypeByNodeName(%s) failed: fs.getVirtualMachine(%s) err=%v", name, name, err)
+		return "", err
+	}
+
+	if machine.HardwareProfile == nil {
+		return "", fmt.Errorf("HardwareProfile of node(%s) is nil", name)
+	}
+	return string(machine.HardwareProfile.VMSize), nil
 }
 
 func (fs *FlexScaleSet) extractResourceGroupByVmssID(vmssID string) (string, error) {
