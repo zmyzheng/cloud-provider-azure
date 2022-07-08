@@ -235,6 +235,35 @@ func (fs *FlexScaleSet) GetPrimaryInterface(nodeName string) (network.Interface,
 
 // GetIPByNodeName gets machine private IP and public IP by node name.
 func (fs *FlexScaleSet) GetIPByNodeName(name string) (string, string, error) {
+	nic, err := fs.GetPrimaryInterface(name)
+	if err != nil {
+		return "", "", err
+	}
+
+	ipConfig, err := getPrimaryIPConfig(nic)
+	if err != nil {
+		klog.Errorf("fs.GetIPByNodeName(%s) failed: getPrimaryIPConfig(%v), err=%v", name, nic, err)
+		return "", "", err
+	}
+
+	privateIP := *ipConfig.PrivateIPAddress
+	publicIP := ""
+	if ipConfig.PublicIPAddress != nil && ipConfig.PublicIPAddress.ID != nil {
+		pipID := *ipConfig.PublicIPAddress.ID
+		pipName, err := getLastSegment(pipID, "/")
+		if err != nil {
+			return "", "", fmt.Errorf("failed to publicIP name for node %q with pipID %q", name, pipID)
+		}
+		pip, existsPip, err := fs.getPublicIPAddress(fs.ResourceGroup, pipName, azcache.CacheReadTypeDefault)
+		if err != nil {
+			return "", "", err
+		}
+		if existsPip {
+			publicIP = *pip.IPAddress
+		}
+	}
+
+	return privateIP, publicIP, nil
 
 }
 
