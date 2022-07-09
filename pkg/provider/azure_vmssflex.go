@@ -267,6 +267,17 @@ func (fs *FlexScaleSet) GetIPByNodeName(name string) (string, string, error) {
 
 }
 
+// GetNodeNameByProviderID gets the node name by provider ID.
+func (fs *FlexScaleSet) GetNodeNameByProviderID(providerID string) (types.NodeName, error) {
+	// NodeName is part of providerID for standard instances.
+	matches := providerIDRE.FindStringSubmatch(providerID)
+	if len(matches) != 2 {
+		return "", errors.New("error splitting providerID")
+	}
+
+	return types.NodeName(matches[1]), nil
+}
+
 func (fs *FlexScaleSet) extractResourceGroupByVmssID(vmssID string) (string, error) {
 	matches := azureResourceGroupNameRE.FindStringSubmatch(vmssID)
 	if len(matches) != 2 {
