@@ -317,6 +317,12 @@ func (fs *FlexScaleSet) GetZoneByNodeName(name string) (cloudprovider.Zone, erro
 	return zone, nil
 }
 
+// GetPrimaryVMSetName returns the VM set name depending on the configured vmType.
+// It returns config.PrimaryScaleSetName for vmss and config.PrimaryAvailabilitySetName for standard vmType.
+func (fs *FlexScaleSet) GetPrimaryVMSetName() string {
+	return fs.Config.PrimaryScaleSetName
+}
+
 func (fs *FlexScaleSet) extractResourceGroupByVmssID(vmssID string) (string, error) {
 	matches := azureResourceGroupNameRE.FindStringSubmatch(vmssID)
 	if len(matches) != 2 {
