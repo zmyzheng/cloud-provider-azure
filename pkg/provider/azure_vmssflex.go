@@ -28,6 +28,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-08-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
@@ -146,18 +147,25 @@ func newFlexScaleSet(az *Cloud) (VMSet, error) {
 	return fs, nil
 }
 
-func (fs *FlexScaleSet) getVmssFlexVMWithoutInstanceView(nodeName string) (vm compute.VirtualMachine, err error) {
+func (fs *FlexScaleSet) getNodeVmssFlexID(nodeName string) (string, error) {
 	vmssFlexID, ok := fs.vmssFlexVMnameToVmssID.Load(nodeName)
 	if !ok {
 		machine, err := fs.getVirtualMachine(types.NodeName(nodeName), azcache.CacheReadTypeUnsafe)
 		if err != nil {
-			return vm, err
+			return "", err
 		}
 		vmssFlexID = machine.VirtualMachineScaleSet.ID
+	}
+	return fmt.Sprintf("%v", vmssFlexID), nil
+}
 
+func (fs *FlexScaleSet) getVmssFlexVMWithoutInstanceView(nodeName string) (vm compute.VirtualMachine, err error) {
+	vmssFlexID, err := fs.getNodeVmssFlexID(nodeName)
+	if err != nil {
+		return vm, err
 	}
 
-	cached, err := fs.vmssFlexVMCache.Get(vmssFlexID.(string), azcache.CacheReadTypeUnsafe)
+	cached, err := fs.vmssFlexVMCache.Get(vmssFlexID, azcache.CacheReadTypeUnsafe)
 	if err != nil {
 		return vm, err
 	}
@@ -321,6 +329,29 @@ func (fs *FlexScaleSet) GetZoneByNodeName(name string) (cloudprovider.Zone, erro
 // It returns config.PrimaryScaleSetName for vmss and config.PrimaryAvailabilitySetName for standard vmType.
 func (fs *FlexScaleSet) GetPrimaryVMSetName() string {
 	return fs.Config.PrimaryScaleSetName
+}
+
+// GetNodeVMSetName returns the availability set or vmss name by the node name.
+// It will return empty string when using standalone vms.
+func (fs *FlexScaleSet) GetNodeVMSetName(node *v1.Node) (string, error) {
+	vmssFlexID, err := fs.getNodeVmssFlexID(node.Name)
+	if err != nil {
+		return "", err
+	}
+	vmssFlexName, err := getLastSegment(vmssFlexID, "/")
+	if err != nil {
+		return "", err
+	}
+	return vmssFlexName, nil
+
+}
+
+// GetVMSetNames selects all possible availability sets or scale sets
+// (depending vmType configured) for service load balancer, if the service has
+// no loadbalancer mode annotation returns the primary VMSet. If service annotation
+// for loadbalancer exists then returns the eligible VMSet. The mode selection
+// annotation would be ignored when using one SLB per cluster.
+func (fs *FlexScaleSet) GetVMSetNames(service *v1.Service, nodes []*v1.Node) (availabilitySetNames *[]string, err error) {
 }
 
 func (fs *FlexScaleSet) extractResourceGroupByVmssID(vmssID string) (string, error) {
