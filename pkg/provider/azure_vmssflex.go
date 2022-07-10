@@ -278,6 +278,29 @@ func (fs *FlexScaleSet) GetIPByNodeName(name string) (string, string, error) {
 
 }
 
+// GetPrivateIPsByNodeName returns a slice of all private ips assigned to node (ipv6 and ipv4)
+// TODO (khenidak): This should read all nics, not just the primary
+// allowing users to split ipv4/v6 on multiple nics
+func (fs *FlexScaleSet) GetPrivateIPsByNodeName(name string) ([]string, error) {
+	ips := make([]string, 0)
+	nic, err := fs.GetPrimaryInterface(name)
+	if err != nil {
+		return ips, err
+	}
+
+	if nic.IPConfigurations == nil {
+		return ips, fmt.Errorf("nic.IPConfigurations for nic (nicname=%q) is nil", *nic.Name)
+	}
+
+	for _, ipConfig := range *(nic.IPConfigurations) {
+		if ipConfig.PrivateIPAddress != nil {
+			ips = append(ips, *(ipConfig.PrivateIPAddress))
+		}
+	}
+
+	return ips, nil
+}
+
 // GetNodeNameByProviderID gets the node name by provider ID.
 func (fs *FlexScaleSet) GetNodeNameByProviderID(providerID string) (types.NodeName, error) {
 	// NodeName is part of providerID for standard instances.
@@ -352,6 +375,12 @@ func (fs *FlexScaleSet) GetNodeVMSetName(node *v1.Node) (string, error) {
 // for loadbalancer exists then returns the eligible VMSet. The mode selection
 // annotation would be ignored when using one SLB per cluster.
 func (fs *FlexScaleSet) GetVMSetNames(service *v1.Service, nodes []*v1.Node) (availabilitySetNames *[]string, err error) {
+}
+
+// EnsureHostsInPool ensures the given Node's primary IP configurations are
+// participating in the specified LoadBalancer Backend Pool.
+func (fs *FlexScaleSet) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node, backendPoolID string, vmSetName string) error {
+
 }
 
 func (fs *FlexScaleSet) extractResourceGroupByVmssID(vmssID string) (string, error) {
