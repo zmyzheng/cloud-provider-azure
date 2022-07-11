@@ -38,7 +38,7 @@ import (
 
 var (
 	// ErrorNotVmssID indicates the id is not a valid vmss id.
-	ErrorNotVmssID = errors.New("not a valid vmss id")
+	ErrorVmssIDIsEmpty = errors.New("VMSS ID is empty")
 )
 
 // FlexScaleSet implements VMSet interface for Azure Flexible VMSS.
@@ -154,7 +154,12 @@ func (fs *FlexScaleSet) getNodeVmssFlexID(nodeName string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		vmssFlexID = machine.VirtualMachineScaleSet.ID
+		vmssFlexID = to.String(machine.VirtualMachineScaleSet.ID)
+		if vmssFlexID == "" {
+			return "", ErrorVmssIDIsEmpty
+		}
+		fs.vmssFlexVMnameToVmssID.Store(nodeName, vmssFlexID)
+
 	}
 	return fmt.Sprintf("%v", vmssFlexID), nil
 }
@@ -187,6 +192,46 @@ func (fs *FlexScaleSet) getVmssFlexVMWithoutInstanceView(nodeName string, crt az
 	return *(cachvmedVM.(*compute.VirtualMachine)), nil
 }
 
+// ------------------------------------------------------------
+// GetNodeNameByProviderID gets the node name by provider ID.
+func (fs *FlexScaleSet) GetNodeNameByProviderID(providerID string) (types.NodeName, error) {
+	// NodeName is part of providerID for standard instances.
+	matches := providerIDRE.FindStringSubmatch(providerID)
+	if len(matches) != 2 {
+		return "", errors.New("error splitting providerID")
+	}
+
+	return types.NodeName(matches[1]), nil
+}
+
+// GetPrimaryVMSetName returns the VM set name depending on the configured vmType.
+// It returns config.PrimaryScaleSetName for vmss and config.PrimaryAvailabilitySetName for standard vmType.
+func (fs *FlexScaleSet) GetPrimaryVMSetName() string {
+	return fs.Config.PrimaryScaleSetName
+}
+
+// getNodeVMSetName returns the vmss flex name by the node name.
+func (fs *FlexScaleSet) getNodeVmssFlexName(nodeName string) (string, error) {
+	vmssFlexID, err := fs.getNodeVmssFlexID(nodeName)
+	if err != nil {
+		return "", err
+	}
+	vmssFlexName, err := getLastSegment(vmssFlexID, "/")
+	if err != nil {
+		return "", err
+	}
+	return vmssFlexName, nil
+
+}
+
+// GetNodeVMSetName returns the availability set or vmss name by the node name.
+// It will return empty string when using standalone vms.
+func (fs *FlexScaleSet) GetNodeVMSetName(node *v1.Node) (string, error) {
+	return fs.getNodeVmssFlexName(node.Name)
+}
+
+// ------------------------------------------------------------
+
 // GetInstanceIDByNodeName gets the cloud provider ID by node name.
 // It must return ("", cloudprovider.InstanceNotFound) if the instance does
 // not exist or is no longer running.
@@ -217,38 +262,6 @@ func (fs *FlexScaleSet) GetInstanceTypeByNodeName(name string) (string, error) {
 		return "", fmt.Errorf("HardwareProfile of node(%s) is nil", name)
 	}
 	return string(machine.HardwareProfile.VMSize), nil
-}
-
-// GetPrimaryInterface gets machine primary network interface by node name.
-func (fs *FlexScaleSet) GetPrimaryInterface(nodeName string) (network.Interface, error) {
-	machine, err := fs.getVmssFlexVMWithoutInstanceView(nodeName, azcache.CacheReadTypeUnsafe)
-	if err != nil {
-		klog.Errorf("fs.GetInstanceTypeByNodeName(%s) failed: fs.getVmssFlexVMWithoutInstanceView(%s) err=%v", nodeName, nodeName, err)
-		return network.Interface{}, err
-	}
-
-	primaryNicID, err := getPrimaryInterfaceID(machine)
-	if err != nil {
-		return network.Interface{}, err
-	}
-	nicName, err := getLastSegment(primaryNicID, "/")
-	if err != nil {
-		return network.Interface{}, err
-	}
-
-	nicResourceGroup, err := extractResourceGroupByNicID(primaryNicID)
-	if err != nil {
-		return network.Interface{}, err
-	}
-
-	ctx, cancel := getContextWithCancel()
-	defer cancel()
-	nic, rerr := fs.InterfacesClient.Get(ctx, nicResourceGroup, nicName, "")
-	if rerr != nil {
-		return network.Interface{}, rerr.Error()
-	}
-
-	return nic, nil
 }
 
 // GetZoneByNodeName gets availability zone for the specified node. If the node is not running
@@ -300,6 +313,40 @@ func (fs *FlexScaleSet) GetProvisioningStateByNodeName(name string) (provisionin
 
 	return to.String(vm.VirtualMachineProperties.ProvisioningState), nil
 }
+
+// GetPrimaryInterface gets machine primary network interface by node name.
+func (fs *FlexScaleSet) GetPrimaryInterface(nodeName string) (network.Interface, error) {
+	machine, err := fs.getVmssFlexVMWithoutInstanceView(nodeName, azcache.CacheReadTypeUnsafe)
+	if err != nil {
+		klog.Errorf("fs.GetInstanceTypeByNodeName(%s) failed: fs.getVmssFlexVMWithoutInstanceView(%s) err=%v", nodeName, nodeName, err)
+		return network.Interface{}, err
+	}
+
+	primaryNicID, err := getPrimaryInterfaceID(machine)
+	if err != nil {
+		return network.Interface{}, err
+	}
+	nicName, err := getLastSegment(primaryNicID, "/")
+	if err != nil {
+		return network.Interface{}, err
+	}
+
+	nicResourceGroup, err := extractResourceGroupByNicID(primaryNicID)
+	if err != nil {
+		return network.Interface{}, err
+	}
+
+	ctx, cancel := getContextWithCancel()
+	defer cancel()
+	nic, rerr := fs.InterfacesClient.Get(ctx, nicResourceGroup, nicName, "")
+	if rerr != nil {
+		return network.Interface{}, rerr.Error()
+	}
+
+	return nic, nil
+}
+
+// ------------------------------------------------------------
 
 // GetIPByNodeName gets machine private IP and public IP by node name.
 func (fs *FlexScaleSet) GetIPByNodeName(name string) (string, string, error) {
@@ -358,37 +405,48 @@ func (fs *FlexScaleSet) GetPrivateIPsByNodeName(name string) ([]string, error) {
 	return ips, nil
 }
 
-// GetNodeNameByProviderID gets the node name by provider ID.
-func (fs *FlexScaleSet) GetNodeNameByProviderID(providerID string) (types.NodeName, error) {
-	// NodeName is part of providerID for standard instances.
-	matches := providerIDRE.FindStringSubmatch(providerID)
+// GetNodeNameByIPConfigurationID gets the nodeName and vmSetName by IP configuration ID.
+func (fs *FlexScaleSet) GetNodeNameByIPConfigurationID(ipConfigurationID string) (string, string, error) {
+	matches := nicIDRE.FindStringSubmatch(ipConfigurationID)
+	if len(matches) != 3 {
+		klog.V(4).Infof("Can not extract VM name from ipConfigurationID (%s)", ipConfigurationID)
+		return "", "", fmt.Errorf("invalid ip config ID %s", ipConfigurationID)
+	}
+
+	nicResourceGroup, nicName := matches[1], matches[2]
+	if nicResourceGroup == "" || nicName == "" {
+		return "", "", fmt.Errorf("invalid ip config ID %s", ipConfigurationID)
+	}
+	nic, rerr := fs.InterfacesClient.Get(context.Background(), nicResourceGroup, nicName, "")
+	if rerr != nil {
+		return "", "", fmt.Errorf("GetNodeNameByIPConfigurationID(%s): failed to get interface of name %s: %w", ipConfigurationID, nicName, rerr.Error())
+	}
+	vmID := ""
+	if nic.InterfacePropertiesFormat != nil && nic.VirtualMachine != nil {
+		vmID = to.String(nic.VirtualMachine.ID)
+	}
+	if vmID == "" {
+		klog.V(2).Infof("GetNodeNameByIPConfigurationID(%s): empty vmID", ipConfigurationID)
+		return "", "", nil
+	}
+
+	matches = vmIDRE.FindStringSubmatch(vmID)
 	if len(matches) != 2 {
-		return "", errors.New("error splitting providerID")
+		return "", "", fmt.Errorf("invalid virtual machine ID %s", vmID)
 	}
+	vmName := matches[1]
 
-	return types.NodeName(matches[1]), nil
-}
+	vmssFlexName, err := fs.getNodeVmssFlexName(vmName)
 
-// GetPrimaryVMSetName returns the VM set name depending on the configured vmType.
-// It returns config.PrimaryScaleSetName for vmss and config.PrimaryAvailabilitySetName for standard vmType.
-func (fs *FlexScaleSet) GetPrimaryVMSetName() string {
-	return fs.Config.PrimaryScaleSetName
-}
-
-// GetNodeVMSetName returns the availability set or vmss name by the node name.
-// It will return empty string when using standalone vms.
-func (fs *FlexScaleSet) GetNodeVMSetName(node *v1.Node) (string, error) {
-	vmssFlexID, err := fs.getNodeVmssFlexID(node.Name)
 	if err != nil {
-		return "", err
+		klog.Errorf("Unable to get the vmss flex name by node name %s: %v", vmName, err)
+		return "", "", err
 	}
-	vmssFlexName, err := getLastSegment(vmssFlexID, "/")
-	if err != nil {
-		return "", err
-	}
-	return vmssFlexName, nil
 
+	return vmName, strings.ToLower(vmssFlexName), nil
 }
+
+// ------------------------------------------------------------
 
 // GetVMSetNames selects all possible availability sets or scale sets
 // (depending vmType configured) for service load balancer, if the service has
@@ -402,13 +460,4 @@ func (fs *FlexScaleSet) GetVMSetNames(service *v1.Service, nodes []*v1.Node) (av
 // participating in the specified LoadBalancer Backend Pool.
 func (fs *FlexScaleSet) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node, backendPoolID string, vmSetName string) error {
 
-}
-
-func (fs *FlexScaleSet) extractResourceGroupByVmssID(vmssID string) (string, error) {
-	matches := azureResourceGroupNameRE.FindStringSubmatch(vmssID)
-	if len(matches) != 2 {
-		return "", ErrorNotVmssID
-	}
-
-	return matches[1], nil
 }

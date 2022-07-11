@@ -1550,13 +1550,17 @@ func (ss *ScaleSet) ensureBackendPoolDeletedFromNode(nodeName, backendPoolID str
 func (ss *ScaleSet) GetNodeNameByIPConfigurationID(ipConfigurationID string) (string, string, error) {
 	matches := vmssIPConfigurationRE.FindStringSubmatch(ipConfigurationID)
 	if len(matches) != 4 {
-		klog.V(4).Infof("Can not extract scale set name from ipConfigurationID (%s), assuming it is managed by availability set", ipConfigurationID)
-		name, rg, err := ss.availabilitySet.GetNodeNameByIPConfigurationID(ipConfigurationID)
-		if err != nil && !errors.Is(err, cloudprovider.InstanceNotFound) {
-			klog.Errorf("Unable to find node by IPConfigurationID %s: %v", ipConfigurationID, err)
-			return "", "", ErrorNotVmssInstance
+		klog.V(4).Infof("Can not extract scale set name from ipConfigurationID (%s), assuming it is managed by availability set or vmss flex", ipConfigurationID)
+
+		name, vmSetName, err := ss.flexScaleSet.GetNodeNameByIPConfigurationID(ipConfigurationID)
+		if err != nil && errors.Is(err, ErrorVmssIDIsEmpty) {
+			name, vmSetName, err = ss.availabilitySet.GetNodeNameByIPConfigurationID(ipConfigurationID)
 		}
-		return name, rg, nil
+		if err != nil {
+			klog.Errorf("Unable to find node by IPConfigurationID %s: %v", ipConfigurationID, err)
+			return "", "", err
+		}
+		return name, vmSetName, nil
 	}
 
 	resourceGroup := matches[1]
