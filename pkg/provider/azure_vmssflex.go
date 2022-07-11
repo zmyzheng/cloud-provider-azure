@@ -159,13 +159,13 @@ func (fs *FlexScaleSet) getNodeVmssFlexID(nodeName string) (string, error) {
 	return fmt.Sprintf("%v", vmssFlexID), nil
 }
 
-func (fs *FlexScaleSet) getVmssFlexVMWithoutInstanceView(nodeName string) (vm compute.VirtualMachine, err error) {
+func (fs *FlexScaleSet) getVmssFlexVMWithoutInstanceView(nodeName string, crt azcache.AzureCacheReadType) (vm compute.VirtualMachine, err error) {
 	vmssFlexID, err := fs.getNodeVmssFlexID(nodeName)
 	if err != nil {
 		return vm, err
 	}
 
-	cached, err := fs.vmssFlexVMCache.Get(vmssFlexID, azcache.CacheReadTypeUnsafe)
+	cached, err := fs.vmssFlexVMCache.Get(vmssFlexID, crt)
 	if err != nil {
 		return vm, err
 	}
@@ -173,8 +173,15 @@ func (fs *FlexScaleSet) getVmssFlexVMWithoutInstanceView(nodeName string) (vm co
 	vmMap := cached.(*sync.Map)
 	cachvmedVM, ok := vmMap.Load(nodeName)
 	if !ok {
-		fs.vmssFlexVMnameToVmssID.Delete(nodeName) // nodeName was saved to vmssFlexVMnameToVmssID before, but does not exist any more. In this case, delete it from the map.
-		return vm, cloudprovider.InstanceNotFound
+		fs.lockMap.LockEntry(vmssFlexID)
+		defer fs.lockMap.UnlockEntry(vmssFlexID)
+		cached, err = fs.vmssFlexVMCache.Get(vmssFlexID, azcache.CacheReadTypeForceRefresh)
+		vmMap = cached.(*sync.Map)
+		cachvmedVM, ok = vmMap.Load(nodeName)
+		if !ok {
+			fs.vmssFlexVMnameToVmssID.Delete(nodeName) // nodeName was saved to vmssFlexVMnameToVmssID before, but does not exist any more. In this case, delete it from the map.
+			return vm, cloudprovider.InstanceNotFound
+		}
 	}
 
 	return *(cachvmedVM.(*compute.VirtualMachine)), nil
@@ -184,7 +191,7 @@ func (fs *FlexScaleSet) getVmssFlexVMWithoutInstanceView(nodeName string) (vm co
 // It must return ("", cloudprovider.InstanceNotFound) if the instance does
 // not exist or is no longer running.
 func (fs *FlexScaleSet) GetInstanceIDByNodeName(name string) (string, error) {
-	machine, err := fs.getVmssFlexVMWithoutInstanceView(name)
+	machine, err := fs.getVmssFlexVMWithoutInstanceView(name, azcache.CacheReadTypeUnsafe)
 	if err != nil {
 		return "", err
 	}
@@ -200,7 +207,7 @@ func (fs *FlexScaleSet) GetInstanceIDByNodeName(name string) (string, error) {
 
 // GetInstanceTypeByNodeName gets the instance type by node name.
 func (fs *FlexScaleSet) GetInstanceTypeByNodeName(name string) (string, error) {
-	machine, err := fs.getVmssFlexVMWithoutInstanceView(name)
+	machine, err := fs.getVmssFlexVMWithoutInstanceView(name, azcache.CacheReadTypeUnsafe)
 	if err != nil {
 		klog.Errorf("fs.GetInstanceTypeByNodeName(%s) failed: fs.getVmssFlexVMWithoutInstanceView(%s) err=%v", name, name, err)
 		return "", err
@@ -214,7 +221,7 @@ func (fs *FlexScaleSet) GetInstanceTypeByNodeName(name string) (string, error) {
 
 // GetPrimaryInterface gets machine primary network interface by node name.
 func (fs *FlexScaleSet) GetPrimaryInterface(nodeName string) (network.Interface, error) {
-	machine, err := fs.getVmssFlexVMWithoutInstanceView(nodeName)
+	machine, err := fs.getVmssFlexVMWithoutInstanceView(nodeName, azcache.CacheReadTypeUnsafe)
 	if err != nil {
 		klog.Errorf("fs.GetInstanceTypeByNodeName(%s) failed: fs.getVmssFlexVMWithoutInstanceView(%s) err=%v", nodeName, nodeName, err)
 		return network.Interface{}, err
@@ -242,6 +249,56 @@ func (fs *FlexScaleSet) GetPrimaryInterface(nodeName string) (network.Interface,
 	}
 
 	return nic, nil
+}
+
+// GetZoneByNodeName gets availability zone for the specified node. If the node is not running
+// with availability zone, then it returns fault domain.
+// for details, refer to https://kubernetes-sigs.github.io/cloud-provider-azure/topics/availability-zones/#node-labels
+func (fs *FlexScaleSet) GetZoneByNodeName(name string) (cloudprovider.Zone, error) {
+	vm, err := fs.getVmssFlexVMWithoutInstanceView(name, azcache.CacheReadTypeUnsafe)
+	if err != nil {
+		klog.Errorf("fs.GetZoneByNodeName(%s) failed: fs.getVmssFlexVMWithoutInstanceView(%s) err=%v", name, name, err)
+		return cloudprovider.Zone{}, err
+	}
+
+	var failureDomain string
+	if vm.Zones != nil && len(*vm.Zones) > 0 {
+		// Get availability zone for the node.
+		zones := *vm.Zones
+		zoneID, err := strconv.Atoi(zones[0])
+		if err != nil {
+			return cloudprovider.Zone{}, fmt.Errorf("failed to parse zone %q: %w", zones, err)
+		}
+
+		failureDomain = fs.makeZone(to.String(vm.Location), zoneID)
+	} else if vm.VirtualMachineProperties.InstanceView != nil && vm.VirtualMachineProperties.InstanceView.PlatformFaultDomain != nil {
+		// Availability zone is not used for the node, falling back to fault domain.
+		failureDomain = strconv.Itoa(int(to.Int32(vm.VirtualMachineProperties.InstanceView.PlatformFaultDomain)))
+	} else {
+		err = fmt.Errorf("failed to get zone info")
+		klog.Errorf("GetZoneByNodeName: got unexpected error %v", err)
+		return cloudprovider.Zone{}, err
+	}
+
+	zone := cloudprovider.Zone{
+		FailureDomain: strings.ToLower(failureDomain),
+		Region:        strings.ToLower(to.String(vm.Location)),
+	}
+	return zone, nil
+}
+
+// GetProvisioningStateByNodeName returns the provisioningState for the specified node.
+func (fs *FlexScaleSet) GetProvisioningStateByNodeName(name string) (provisioningState string, err error) {
+	vm, err := fs.getVmssFlexVMWithoutInstanceView(name, azcache.CacheReadTypeDefault)
+	if err != nil {
+		return provisioningState, err
+	}
+
+	if vm.VirtualMachineProperties == nil || vm.VirtualMachineProperties.ProvisioningState == nil {
+		return provisioningState, nil
+	}
+
+	return to.String(vm.VirtualMachineProperties.ProvisioningState), nil
 }
 
 // GetIPByNodeName gets machine private IP and public IP by node name.
@@ -310,42 +367,6 @@ func (fs *FlexScaleSet) GetNodeNameByProviderID(providerID string) (types.NodeNa
 	}
 
 	return types.NodeName(matches[1]), nil
-}
-
-// GetZoneByNodeName gets availability zone for the specified node. If the node is not running
-// with availability zone, then it returns fault domain.
-// for details, refer to https://kubernetes-sigs.github.io/cloud-provider-azure/topics/availability-zones/#node-labels
-func (fs *FlexScaleSet) GetZoneByNodeName(name string) (cloudprovider.Zone, error) {
-	vm, err := fs.getVmssFlexVMWithoutInstanceView(name)
-	if err != nil {
-		klog.Errorf("fs.GetZoneByNodeName(%s) failed: fs.getVmssFlexVMWithoutInstanceView(%s) err=%v", name, name, err)
-		return cloudprovider.Zone{}, err
-	}
-
-	var failureDomain string
-	if vm.Zones != nil && len(*vm.Zones) > 0 {
-		// Get availability zone for the node.
-		zones := *vm.Zones
-		zoneID, err := strconv.Atoi(zones[0])
-		if err != nil {
-			return cloudprovider.Zone{}, fmt.Errorf("failed to parse zone %q: %w", zones, err)
-		}
-
-		failureDomain = fs.makeZone(to.String(vm.Location), zoneID)
-	} else if vm.VirtualMachineProperties.InstanceView != nil && vm.VirtualMachineProperties.InstanceView.PlatformFaultDomain != nil {
-		// Availability zone is not used for the node, falling back to fault domain.
-		failureDomain = strconv.Itoa(int(to.Int32(vm.VirtualMachineProperties.InstanceView.PlatformFaultDomain)))
-	} else {
-		err = fmt.Errorf("failed to get zone info")
-		klog.Errorf("GetZoneByNodeName: got unexpected error %v", err)
-		return cloudprovider.Zone{}, err
-	}
-
-	zone := cloudprovider.Zone{
-		FailureDomain: strings.ToLower(failureDomain),
-		Region:        strings.ToLower(to.String(vm.Location)),
-	}
-	return zone, nil
 }
 
 // GetPrimaryVMSetName returns the VM set name depending on the configured vmType.
