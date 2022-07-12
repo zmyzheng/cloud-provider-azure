@@ -230,6 +230,20 @@ func (fs *FlexScaleSet) GetNodeVMSetName(node *v1.Node) (string, error) {
 	return fs.getNodeVmssFlexName(node.Name)
 }
 
+// GetAgentPoolVMSetNames returns all vmSet names according to the nodes
+func (fs *FlexScaleSet) GetAgentPoolVMSetNames(nodes []*v1.Node) (*[]string, error) {
+	vmSetNames := make([]string, 0)
+	for _, node := range nodes {
+		vmSetName, err := fs.GetNodeVMSetName(node)
+		if err != nil {
+			klog.Errorf("Unable to get the vmss flex name by node name %s: %v", node.Name, err)
+			continue
+		}
+		vmSetNames = append(vmSetNames, vmSetName)
+	}
+	return &vmSetNames, nil
+}
+
 // ------------------------------------------------------------
 
 // GetInstanceIDByNodeName gets the cloud provider ID by node name.

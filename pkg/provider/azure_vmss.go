@@ -1869,6 +1869,8 @@ func (ss *ScaleSet) EnsureBackendPoolDeletedFromVMSets(vmssNamesMap map[string]b
 func (ss *ScaleSet) GetAgentPoolVMSetNames(nodes []*v1.Node) (*[]string, error) {
 	vmSetNames := make([]string, 0)
 
+	vmssFlexVMNodes := make([]*v1.Node, 0)
+
 	for _, node := range nodes {
 		var names *[]string
 		managedByAS, err := ss.isNodeManagedByAvailabilitySet(node.Name, azcache.CacheReadTypeDefault)
@@ -1889,22 +1891,12 @@ func (ss *ScaleSet) GetAgentPoolVMSetNames(nodes []*v1.Node) (*[]string, error) 
 			continue
 		}
 
-		// TODO:
-		managedByVmssFlex, err := ss.isNodeManagedByVmssFlex(node.Name, azcache.CacheReadTypeDefault)
+		managedByVmssFlex, err := ss.isNodeManagedByVmssFlex(node.Name, azcache.CacheReadTypeUnsafe)
 		if err != nil {
 			return nil, fmt.Errorf("GetAgentPoolVMSetNames: failed to check if the node %s is managed by VmssFlex: %w", node.Name, err)
 		}
 		if managedByVmssFlex {
-			cached, err := ss.vmssFlexNodesCache.Get(consts.VmssFlexNodesKey, azcache.CacheReadTypeDefault)
-			if err != nil {
-				return nil, fmt.Errorf("GetAgentPoolVMSetNames: failed to get vmssFlexNodesCache")
-			}
-			vms := cached.(vmssFlexNodeEntry).vms
-			names, err = ss.FlexScaleSet.(*FlexScaleSet).getAgentPoolVmssFlex(vms, []*v1.Node{node})
-			if err != nil {
-				return nil, fmt.Errorf("GetAgentPoolVMSetNames: failed to execute getAgentPoolVmssFlex: %w", err)
-			}
-			vmSetNames = append(vmSetNames, *names...)
+			vmssFlexVMNodes = append(vmssFlexVMNodes, node)
 			continue
 		}
 
@@ -1914,6 +1906,12 @@ func (ss *ScaleSet) GetAgentPoolVMSetNames(nodes []*v1.Node) (*[]string, error) 
 		}
 		vmSetNames = append(vmSetNames, *names...)
 	}
+
+	names, err := ss.flexScaleSet.GetAgentPoolVMSetNames(vmssFlexVMNodes)
+	if err != nil {
+		return nil, fmt.Errorf("ss.flexScaleSet.GetAgentPoolVMSetNames: failed to execute getAgentPoolScaleSets: %w", err)
+	}
+	vmSetNames = append(vmSetNames, *names...)
 
 	return &vmSetNames, nil
 }
