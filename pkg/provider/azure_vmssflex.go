@@ -427,6 +427,28 @@ func (fs *FlexScaleSet) GetProvisioningStateByNodeName(name string) (provisionin
 	return to.String(vm.VirtualMachineProperties.ProvisioningState), nil
 }
 
+// GetPowerStatusByNodeName returns the powerState for the specified node.
+func (fs *FlexScaleSet) GetPowerStatusByNodeName(name string) (powerState string, err error) {
+	vm, err := fs.getVmssFlexVMStatus(name, azcache.CacheReadTypeDefault)
+	if err != nil {
+		return powerState, err
+	}
+
+	if vm.InstanceView != nil && vm.InstanceView.Statuses != nil {
+		statuses := *vm.InstanceView.Statuses
+		for _, status := range statuses {
+			state := to.String(status.Code)
+			if strings.HasPrefix(state, vmPowerStatePrefix) {
+				return strings.TrimPrefix(state, vmPowerStatePrefix), nil
+			}
+		}
+	}
+
+	// vm.InstanceView or vm.InstanceView.Statuses are nil when the VM is under deleting.
+	klog.V(3).Infof("InstanceView for node %q is nil, assuming it's stopped", name)
+	return vmPowerStateStopped, nil
+}
+
 // GetPrimaryInterface gets machine primary network interface by node name.
 func (fs *FlexScaleSet) GetPrimaryInterface(nodeName string) (network.Interface, error) {
 	machine, err := fs.getVmssFlexVMWithoutInstanceView(nodeName, azcache.CacheReadTypeUnsafe)
