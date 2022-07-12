@@ -244,6 +244,45 @@ func (fs *FlexScaleSet) GetAgentPoolVMSetNames(nodes []*v1.Node) (*[]string, err
 	return &vmSetNames, nil
 }
 
+// GetVMSetNames selects all possible availability sets or scale sets
+// (depending vmType configured) for service load balancer, if the service has
+// no loadbalancer mode annotation returns the primary VMSet. If service annotation
+// for loadbalancer exists then returns the eligible VMSet. The mode selection
+// annotation would be ignored when using one SLB per cluster.
+func (fs *FlexScaleSet) GetVMSetNames(service *v1.Service, nodes []*v1.Node) (*[]string, error) {
+	hasMode, isAuto, serviceVMSetName := fs.getServiceLoadBalancerMode(service)
+	useSingleSLB := fs.useStandardLoadBalancer() && !fs.EnableMultipleStandardLoadBalancers
+	if !hasMode || useSingleSLB {
+		// no mode specified in service annotation or use single SLB mode
+		// default to PrimaryScaleSetName
+		vmssFlexNames := &[]string{fs.Config.PrimaryScaleSetName}
+		return vmssFlexNames, nil
+	}
+
+	vmssFlexNames, err := fs.GetAgentPoolVMSetNames(nodes)
+	if err != nil {
+		klog.Errorf("fs.GetVMSetNames - GetAgentPoolVMSetNames failed err=(%v)", err)
+		return nil, err
+	}
+
+	if !isAuto {
+		found := false
+		for asx := range *vmssFlexNames {
+			if strings.EqualFold((*vmssFlexNames)[asx], serviceVMSetName) {
+				found = true
+				serviceVMSetName = (*vmssFlexNames)[asx]
+				break
+			}
+		}
+		if !found {
+			klog.Errorf("fs.GetVMSetNames - scale set (%s) in service annotation not found", serviceVMSetName)
+			return nil, fmt.Errorf("scale set (%s) - not found", serviceVMSetName)
+		}
+		return &[]string{serviceVMSetName}, nil
+	}
+	return vmssFlexNames, nil
+}
+
 // ------------------------------------------------------------
 
 // GetInstanceIDByNodeName gets the cloud provider ID by node name.
@@ -461,14 +500,6 @@ func (fs *FlexScaleSet) GetNodeNameByIPConfigurationID(ipConfigurationID string)
 }
 
 // ------------------------------------------------------------
-
-// GetVMSetNames selects all possible availability sets or scale sets
-// (depending vmType configured) for service load balancer, if the service has
-// no loadbalancer mode annotation returns the primary VMSet. If service annotation
-// for loadbalancer exists then returns the eligible VMSet. The mode selection
-// annotation would be ignored when using one SLB per cluster.
-func (fs *FlexScaleSet) GetVMSetNames(service *v1.Service, nodes []*v1.Node) (availabilitySetNames *[]string, err error) {
-}
 
 // EnsureHostsInPool ensures the given Node's primary IP configurations are
 // participating in the specified LoadBalancer Backend Pool.
