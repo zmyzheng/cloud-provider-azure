@@ -1920,8 +1920,16 @@ func (ss *ScaleSet) GetNodeVMSetName(node *v1.Node) (string, error) {
 	providerID := node.Spec.ProviderID
 	_, vmssName, err := getVmssAndResourceGroupNameByVMProviderID(providerID)
 	if err != nil {
-		klog.Warningf("ss.GetNodeVMSetName: the provider ID %s of node %s does not match the format of a VMSS instance, assuming it is managed by an availability set", providerID, node.Name)
-		return ss.availabilitySet.GetNodeVMSetName(node)
+		klog.Warningf("ss.GetNodeVMSetName: the provider ID %s of node %s does not match the format of a VMSS instance, assuming it is managed by an availability set or vmss flex", providerID, node.Name)
+		managedByVmssFlex, err := ss.isNodeManagedByVmssFlex(node.Name, azcache.CacheReadTypeUnsafe)
+		if err != nil {
+			return "", fmt.Errorf("GetNodeVMSetName: failed to check if the node %s is managed by VmssFlex: %w", node.Name, err)
+		}
+		if managedByVmssFlex {
+			return ss.flexScaleSet.GetNodeVMSetName(node)
+		} else {
+			return ss.availabilitySet.GetNodeVMSetName(node)
+		}
 	}
 
 	klog.V(4).Infof("ss.GetNodeVMSetName: found vmss name %s from node name %s", vmssName, node.Name)
