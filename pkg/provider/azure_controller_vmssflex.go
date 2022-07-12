@@ -17,10 +17,36 @@ limitations under the License.
 package provider
 
 import (
+	"context"
+
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog/v2"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 )
+
+// UpdateVM updates a vm
+func (fs *FlexScaleSet) UpdateVM(ctx context.Context, nodeName types.NodeName) error {
+	vmName := mapNodeNameToVMName(nodeName)
+	nodeResourceGroup, err := fs.GetNodeResourceGroup(vmName)
+	if err != nil {
+		return err
+	}
+	klog.V(2).Infof("azureDisk - update(%s): vm(%s)", nodeResourceGroup, vmName)
+	// Invalidate the cache right after updating
+	defer func() {
+
+		_ = fs.deleteCacheForNode(vmName)
+
+	}()
+
+	rerr := fs.VirtualMachinesClient.Update(ctx, nodeResourceGroup, vmName, compute.VirtualMachineUpdate{}, "update_vm")
+	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - returned with %v", nodeResourceGroup, vmName, rerr)
+	if rerr != nil {
+		return rerr.Error()
+	}
+	return nil
+}
 
 // GetDataDisks gets a list of data disks attached to the node.
 func (fs *FlexScaleSet) GetDataDisks(nodeName types.NodeName, crt azcache.AzureCacheReadType) ([]compute.DataDisk, *string, error) {
