@@ -28,7 +28,7 @@ import (
 
 // WaitForUpdateResult waits for the response of the update request
 func (fs *FlexScaleSet) WaitForUpdateResult(ctx context.Context, future *azure.Future, resourceGroupName, source string) error {
-	if rerr := as.VirtualMachinesClient.WaitForUpdateResult(ctx, future, resourceGroupName, source); rerr != nil {
+	if rerr := fs.VirtualMachinesClient.WaitForUpdateResult(ctx, future, resourceGroupName, source); rerr != nil {
 		return rerr.Error()
 	}
 	return nil
