@@ -20,10 +20,19 @@ import (
 	"context"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
+	"github.com/Azure/go-autorest/autorest/azure"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 )
+
+// WaitForUpdateResult waits for the response of the update request
+func (fs *FlexScaleSet) WaitForUpdateResult(ctx context.Context, future *azure.Future, resourceGroupName, source string) error {
+	if rerr := as.VirtualMachinesClient.WaitForUpdateResult(ctx, future, resourceGroupName, source); rerr != nil {
+		return rerr.Error()
+	}
+	return nil
+}
 
 // UpdateVM updates a vm
 func (fs *FlexScaleSet) UpdateVM(ctx context.Context, nodeName types.NodeName) error {
