@@ -153,6 +153,8 @@ const (
 	VmssFlexCacheTTLDefaultInSeconds = 600
 	// VmssFlexVMCacheTTLInSeconds is the TTL of the vmss flex vm cache
 	VmssFlexVMCacheTTLInSeconds = 600
+	// VmssFlexVMStatusCacheTTLInSeconds is the TTL of the vmss flex vm cache
+	VmssFlexVMStatusCacheTTLInSeconds = 600
 
 	// VmssFlexNodesCacheTTLDefaultInSeconds is the TTL of the vmss flex node cache
 	VmssFlexNodesCacheTTLDefaultInSeconds = 900

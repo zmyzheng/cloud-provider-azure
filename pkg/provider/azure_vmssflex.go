@@ -49,6 +49,7 @@ type FlexScaleSet struct {
 
 	vmssFlexVMnameToVmssID *sync.Map
 	vmssFlexVMCache        *azcache.TimedCache
+	vmssFlexVMStatusCache  *azcache.TimedCache
 
 	// lockMap in cache refresh
 	lockMap *lockMap
@@ -130,6 +131,36 @@ func (fs *FlexScaleSet) newVmssFlexVMCache() (*azcache.TimedCache, error) {
 	return azcache.NewTimedcache(time.Duration(fs.Config.VmssFlexVMCacheTTLInSeconds)*time.Second, getter)
 }
 
+func (fs *FlexScaleSet) newVmssFlexVMStatusCache() (*azcache.TimedCache, error) {
+	getter := func(key string) (interface{}, error) {
+		localCache := &sync.Map{}
+
+		ctx, cancel := getContextWithCancel()
+		defer cancel()
+
+		vms, rerr := fs.VirtualMachinesClient.ListVmssFlexVMsWithOnlyInstanceView(ctx, key)
+		if rerr != nil {
+			klog.Errorf("VMSS Flex List failed: %v", rerr)
+			return nil, rerr.Error()
+		}
+
+		for i := range vms {
+			vm := vms[i]
+			if vm.ID != nil {
+				localCache.Store(*vm.Name, &vm)
+				fs.vmssFlexVMnameToVmssID.Store(*vm.Name, key)
+			}
+		}
+
+		return localCache, nil
+	}
+
+	if fs.Config.VmssFlexVMStatusCacheTTLInSeconds == 0 {
+		fs.Config.VmssFlexVMStatusCacheTTLInSeconds = consts.VmssFlexVMStatusCacheTTLInSeconds
+	}
+	return azcache.NewTimedcache(time.Duration(fs.Config.VmssFlexVMStatusCacheTTLInSeconds)*time.Second, getter)
+}
+
 func newFlexScaleSet(az *Cloud) (VMSet, error) {
 	fs := &FlexScaleSet{
 		Cloud:                  az,
@@ -143,6 +174,7 @@ func newFlexScaleSet(az *Cloud) (VMSet, error) {
 		return nil, err
 	}
 	fs.vmssFlexVMCache, err = fs.newVmssFlexVMCache()
+	fs.vmssFlexVMStatusCache, err = fs.newVmssFlexVMStatusCache()
 
 	return fs, nil
 }
@@ -181,6 +213,34 @@ func (fs *FlexScaleSet) getVmssFlexVMWithoutInstanceView(nodeName string, crt az
 		fs.lockMap.LockEntry(vmssFlexID)
 		defer fs.lockMap.UnlockEntry(vmssFlexID)
 		cached, err = fs.vmssFlexVMCache.Get(vmssFlexID, azcache.CacheReadTypeForceRefresh)
+		vmMap = cached.(*sync.Map)
+		cachvmedVM, ok = vmMap.Load(nodeName)
+		if !ok {
+			fs.vmssFlexVMnameToVmssID.Delete(nodeName) // nodeName was saved to vmssFlexVMnameToVmssID before, but does not exist any more. In this case, delete it from the map.
+			return vm, cloudprovider.InstanceNotFound
+		}
+	}
+
+	return *(cachvmedVM.(*compute.VirtualMachine)), nil
+}
+
+func (fs *FlexScaleSet) getVmssFlexVMStatus(nodeName string, crt azcache.AzureCacheReadType) (vm compute.VirtualMachine, err error) {
+	vmssFlexID, err := fs.getNodeVmssFlexID(nodeName)
+	if err != nil {
+		return vm, err
+	}
+
+	cached, err := fs.vmssFlexVMStatusCache.Get(vmssFlexID, crt)
+	if err != nil {
+		return vm, err
+	}
+
+	vmMap := cached.(*sync.Map)
+	cachvmedVM, ok := vmMap.Load(nodeName)
+	if !ok {
+		fs.lockMap.LockEntry(vmssFlexID)
+		defer fs.lockMap.UnlockEntry(vmssFlexID)
+		cached, err = fs.vmssFlexVMStatusCache.Get(vmssFlexID, azcache.CacheReadTypeForceRefresh)
 		vmMap = cached.(*sync.Map)
 		cachvmedVM, ok = vmMap.Load(nodeName)
 		if !ok {
