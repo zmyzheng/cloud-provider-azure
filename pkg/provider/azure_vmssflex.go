@@ -31,6 +31,7 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
+	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 )
 
 var (
@@ -400,6 +401,41 @@ func (fs *FlexScaleSet) GetNodeNameByIPConfigurationID(ipConfigurationID string)
 }
 
 // ------------------------------------------------------------
+
+// GetNodeCIDRMaskByProviderID returns the node CIDR subnet mask by provider ID.
+func (fs *FlexScaleSet) GetNodeCIDRMasksByProviderID(providerID string) (int, int, error) {
+	nodeName, err := fs.GetNodeNameByProviderID(providerID)
+	vmName := mapNodeNameToVMName(nodeName)
+	if err != nil {
+		klog.Errorf("Unable to get the vmss flex vm node name by providerID %s: %v", providerID, err)
+		return 0, 0, err
+	}
+
+	vmssFlex, err := fs.getVmssFlexByNodeName(vmName, azcache.CacheReadTypeDefault)
+	if err != nil {
+		if errors.Is(err, cloudprovider.InstanceNotFound) {
+			return consts.DefaultNodeMaskCIDRIPv4, consts.DefaultNodeMaskCIDRIPv6, nil
+		}
+		return 0, 0, err
+	}
+
+	var ipv4Mask, ipv6Mask int
+	if v4, ok := vmssFlex.Tags[consts.VMSetCIDRIPV4TagKey]; ok && v4 != nil {
+		ipv4Mask, err = strconv.Atoi(to.String(v4))
+		if err != nil {
+			klog.Errorf("GetNodeCIDRMasksByProviderID: error when paring the value of the ipv4 mask size %s: %v", to.String(v4), err)
+		}
+	}
+	if v6, ok := vmssFlex.Tags[consts.VMSetCIDRIPV6TagKey]; ok && v6 != nil {
+		ipv6Mask, err = strconv.Atoi(to.String(v6))
+		if err != nil {
+			klog.Errorf("GetNodeCIDRMasksByProviderID: error when paring the value of the ipv6 mask size%s: %v", to.String(v6), err)
+		}
+	}
+
+	return ipv4Mask, ipv6Mask, nil
+
+}
 
 // EnsureHostsInPool ensures the given Node's primary IP configurations are
 // participating in the specified LoadBalancer Backend Pool.

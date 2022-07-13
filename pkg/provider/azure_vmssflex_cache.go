@@ -18,7 +18,6 @@ package provider
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -257,7 +256,7 @@ func (fs *FlexScaleSet) getVmssFlexByVmssFlexID(vmssFlexID string, crt azcache.A
 			result := vmssFlex.(*compute.VirtualMachineScaleSet)
 			return result, nil
 		} else {
-			return nil, errors.New("vmss flex not found")
+			return nil, cloudprovider.InstanceNotFound
 		}
 	}
 
