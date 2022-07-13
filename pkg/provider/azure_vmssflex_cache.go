@@ -235,7 +235,7 @@ func (fs *FlexScaleSet) deleteCacheForNode(nodeName string) error {
 	return nil
 }
 
-func (fs *FlexScaleSet) getVmssFlex(vmssFlexID string, crt azcache.AzureCacheReadType) (*compute.VirtualMachineScaleSet, error) {
+func (fs *FlexScaleSet) getVmssFlexByVmssFlexID(vmssFlexID string, crt azcache.AzureCacheReadType) (*compute.VirtualMachineScaleSet, error) {
 	cached, err := fs.vmssFlexCache.Get(consts.VmssFlexKey, crt)
 	if err != nil {
 		return nil, err
@@ -261,4 +261,18 @@ func (fs *FlexScaleSet) getVmssFlex(vmssFlexID string, crt azcache.AzureCacheRea
 		}
 	}
 
+}
+
+func (fs *FlexScaleSet) getVmssFlexByNodeName(nodeName string, crt azcache.AzureCacheReadType) (*compute.VirtualMachineScaleSet, error) {
+	vmssFlexID, err := fs.getNodeVmssFlexID(nodeName)
+	if err != nil {
+		klog.Errorf("fs.getNodeVmssFlexID(%s) failed with error: %v", nodeName, err)
+		return nil, err
+	}
+	vmssFlex, err := fs.getVmssFlexByVmssFlexID(vmssFlexID, crt)
+	if err != nil {
+		klog.Errorf("s.getVmssFlexByVmssFlexID failed with error: %v", err)
+		return nil, err
+	}
+	return vmssFlex, nil
 }
