@@ -18,6 +18,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -232,4 +233,32 @@ func (fs *FlexScaleSet) deleteCacheForNode(nodeName string) error {
 	vmMap.Delete(nodeName)
 
 	return nil
+}
+
+func (fs *FlexScaleSet) getVmssFlex(vmssFlexID string, crt azcache.AzureCacheReadType) (*compute.VirtualMachineScaleSet, error) {
+	cached, err := fs.vmssFlexCache.Get(consts.VmssFlexKey, crt)
+	if err != nil {
+		return nil, err
+	}
+
+	vmssFlexes := cached.(*sync.Map)
+	if vmssFlex, ok := vmssFlexes.Load(vmssFlexID); ok {
+		result := vmssFlex.(*compute.VirtualMachineScaleSet)
+		return result, nil
+	} else {
+		klog.V(2).Infof("Couldn't find VMSS Flex with ID %s, refreshing the cache", vmssFlexID)
+		cached, err = fs.vmssFlexCache.Get(consts.VmssFlexKey, azcache.CacheReadTypeForceRefresh)
+		if err != nil {
+			return nil, err
+		}
+
+		vmssFlexes = cached.(*sync.Map)
+		if vmssFlex, ok = vmssFlexes.Load(vmssFlexID); ok {
+			result := vmssFlex.(*compute.VirtualMachineScaleSet)
+			return result, nil
+		} else {
+			return nil, errors.New("vmss flex not found")
+		}
+	}
+
 }
