@@ -18,7 +18,9 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -274,4 +276,31 @@ func (fs *FlexScaleSet) getVmssFlexByNodeName(nodeName string, crt azcache.Azure
 		return nil, err
 	}
 	return vmssFlex, nil
+}
+
+func (fs *FlexScaleSet) getVmssFlexIDByName(vmssFlexName string) (string, error) {
+	cached, err := fs.vmssFlexCache.Get(consts.VmssFlexKey, azcache.CacheReadTypeDefault)
+	if err != nil {
+		return "", err
+	}
+
+	var targetVmssFlexID string
+	vmssFlexes := cached.(*sync.Map)
+	vmssFlexes.Range(func(key, value interface{}) bool {
+		vmssFlexID := key.(string)
+		name, err := getLastSegment(vmssFlexID, "/")
+		if err != nil {
+			return true
+		}
+		if strings.EqualFold(name, vmssFlexName) {
+			targetVmssFlexID = vmssFlexID
+			return false
+		}
+		return true
+	})
+	if targetVmssFlexID != "" {
+		return targetVmssFlexID, nil
+	} else {
+		return "", errors.New("failed to get vmssFlexID by name")
+	}
 }

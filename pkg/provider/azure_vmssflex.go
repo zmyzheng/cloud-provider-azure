@@ -566,3 +566,171 @@ func (fs *FlexScaleSet) EnsureHostInPool(service *v1.Service, nodeName types.Nod
 	return nodeResourceGroup, vmssFlexName, vmName, nil, nil
 
 }
+
+func (fs *FlexScaleSet) ensureVMSSFlexInPool(service *v1.Service, nodes []*v1.Node, backendPoolID string, vmSetNameOfLB string) error {
+	klog.V(2).Infof("ensureVMSSInPool: ensuring VMSS Flex with backendPoolID %s", backendPoolID)
+	vmssFlexIDsMap := make(map[string]bool)
+
+	// the single standard load balancer supports multiple vmss in its backend while
+	// multiple standard load balancers and the basic load balancer doesn't
+	if fs.useStandardLoadBalancer() && !fs.EnableMultipleStandardLoadBalancers {
+		for _, node := range nodes {
+			if fs.excludeMasterNodesFromStandardLB() && isControlPlaneNode(node) {
+				continue
+			}
+
+			shouldExcludeLoadBalancer, err := fs.ShouldNodeExcludedFromLoadBalancer(node.Name)
+			if err != nil {
+				klog.Errorf("ShouldNodeExcludedFromLoadBalancer(%s) failed with error: %v", node.Name, err)
+				return err
+			}
+			if shouldExcludeLoadBalancer {
+				klog.V(4).Infof("Excluding unmanaged/external-resource-group node %q", node.Name)
+				continue
+			}
+
+			// in this scenario the vmSetName is an empty string and the name of vmss should be obtained from the provider IDs of nodes
+			vmssFlexID, err := fs.getNodeVmssFlexID(node.Name)
+			if err != nil {
+				klog.Error("ensureVMSSInPool: failed to get VMSS Flex ID of node: %s, will skip checking and continue", node.Name)
+				continue
+			}
+			resourceGroupName, err := fs.GetNodeResourceGroup(node.Name)
+			if err != nil {
+				klog.Error("ensureVMSSInPool: failed to get resoure group of node: %s, will skip checking and continue", node.Name)
+				continue
+			}
+
+			// only vmsses in the resource group same as it's in azure config are included
+			if strings.EqualFold(resourceGroupName, fs.ResourceGroup) {
+				vmssFlexIDsMap[vmssFlexID] = true
+			}
+		}
+	} else {
+		vmssFlexID, err := fs.getVmssFlexIDByName(vmSetNameOfLB)
+		if err != nil {
+			klog.Error("ensureVMSSInPool: failed to get VMSS Flex ID of vmSet: %s, ", vmSetNameOfLB)
+			return err
+		}
+		vmssFlexIDsMap[vmssFlexID] = true
+	}
+
+	klog.V(2).Infof("ensureVMSSInPool begins to update VMSS %v with backendPoolID %s", vmssFlexIDsMap, backendPoolID)
+	for vmssFlexID := range vmssFlexIDsMap {
+		vmssFlex, err := fs.getVmssFlexByVmssFlexID(vmssFlexID, azcache.CacheReadTypeDefault)
+		if err != nil {
+			return err
+		}
+		vmssFlexName := *vmssFlex.Name
+
+		// When vmss is being deleted, CreateOrUpdate API would report "the vmss is being deleted" error.
+		// Since it is being deleted, we shouldn't send more CreateOrUpdate requests for it.
+		if vmssFlex.ProvisioningState != nil && strings.EqualFold(*vmssFlex.ProvisioningState, consts.VirtualMachineScaleSetsDeallocating) {
+			klog.V(3).Infof("ensureVMSSInPool: found vmss %s being deleted, skipping", vmssFlexID)
+			continue
+		}
+
+		if vmssFlex.VirtualMachineProfile == nil || vmssFlex.VirtualMachineProfile.NetworkProfile == nil || vmssFlex.VirtualMachineProfile.NetworkProfile.NetworkInterfaceConfigurations == nil {
+			klog.V(4).Infof("EnsureHostInPool: cannot obtain the primary network interface configuration of vmss %s, just skip it as it might not have default vm profile", vmssFlexID)
+			continue
+		}
+		vmssNIC := *vmssFlex.VirtualMachineProfile.NetworkProfile.NetworkInterfaceConfigurations
+		primaryNIC, err := fs.getPrimaryNetworkInterfaceConfigurationForScaleSet(vmssNIC)
+		if err != nil {
+			return err
+		}
+		var primaryIPConfig *compute.VirtualMachineScaleSetIPConfiguration
+		ipv6 := utilnet.IsIPv6String(service.Spec.ClusterIP)
+		// Find primary network interface configuration.
+		if !fs.Cloud.ipv6DualStackEnabled && !ipv6 {
+			// Find primary IP configuration.
+			primaryIPConfig, err = getPrimaryIPConfigFromVMSSNetworkConfig(primaryNIC)
+			if err != nil {
+				return err
+			}
+		} else {
+			primaryIPConfig, err = getConfigForScaleSetByIPFamily(primaryNIC, "", ipv6)
+			if err != nil {
+				return err
+			}
+		}
+
+		loadBalancerBackendAddressPools := []compute.SubResource{}
+		if primaryIPConfig.LoadBalancerBackendAddressPools != nil {
+			loadBalancerBackendAddressPools = *primaryIPConfig.LoadBalancerBackendAddressPools
+		}
+
+		var found bool
+		for _, loadBalancerBackendAddressPool := range loadBalancerBackendAddressPools {
+			if strings.EqualFold(*loadBalancerBackendAddressPool.ID, backendPoolID) {
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+
+		if fs.useStandardLoadBalancer() && len(loadBalancerBackendAddressPools) > 0 {
+			// Although standard load balancer supports backends from multiple scale
+			// sets, the same network interface couldn't be added to more than one load balancer of
+			// the same type. Omit those nodes (e.g. masters) so Azure ARM won't complain
+			// about this.
+			newBackendPoolsIDs := make([]string, 0, len(loadBalancerBackendAddressPools))
+			for _, pool := range loadBalancerBackendAddressPools {
+				if pool.ID != nil {
+					newBackendPoolsIDs = append(newBackendPoolsIDs, *pool.ID)
+				}
+			}
+			isSameLB, oldLBName, err := isBackendPoolOnSameLB(backendPoolID, newBackendPoolsIDs)
+			if err != nil {
+				return err
+			}
+			if !isSameLB {
+				klog.V(4).Infof("VMSS %q has already been added to LB %q, omit adding it to a new one", vmssFlexID, oldLBName)
+				return nil
+			}
+		}
+
+		// Compose a new vmss with added backendPoolID.
+		loadBalancerBackendAddressPools = append(loadBalancerBackendAddressPools,
+			compute.SubResource{
+				ID: to.StringPtr(backendPoolID),
+			})
+		primaryIPConfig.LoadBalancerBackendAddressPools = &loadBalancerBackendAddressPools
+		newVMSS := compute.VirtualMachineScaleSet{
+			Location: vmssFlex.Location,
+			VirtualMachineScaleSetProperties: &compute.VirtualMachineScaleSetProperties{
+				VirtualMachineProfile: &compute.VirtualMachineScaleSetVMProfile{
+					NetworkProfile: &compute.VirtualMachineScaleSetNetworkProfile{
+						NetworkInterfaceConfigurations: &vmssNIC,
+					},
+				},
+			},
+		}
+
+		klog.V(2).Infof("ensureVMSSInPool begins to update vmss(%s) with new backendPoolID %s", vmssFlexName, backendPoolID)
+		rerr := fs.CreateOrUpdateVMSS(fs.ResourceGroup, vmssFlexName, newVMSS)
+		if rerr != nil {
+			klog.Errorf("ensureVMSSInPool CreateOrUpdateVMSS(%s) with new backendPoolID %s, err: %v", vmssFlexName, backendPoolID, err)
+			return rerr.Error()
+		}
+	}
+	return nil
+}
+
+// getPrimaryNetworkInterfaceConfigurationForScaleSet gets primary network interface configuration for scale set.
+func (fs *FlexScaleSet) getPrimaryNetworkInterfaceConfigurationForScaleSet(networkConfigurations []compute.VirtualMachineScaleSetNetworkConfiguration) (*compute.VirtualMachineScaleSetNetworkConfiguration, error) {
+	if len(networkConfigurations) == 1 {
+		return &networkConfigurations[0], nil
+	}
+
+	for idx := range networkConfigurations {
+		networkConfig := &networkConfigurations[idx]
+		if networkConfig.Primary != nil && *networkConfig.Primary {
+			return networkConfig, nil
+		}
+	}
+
+	return nil, fmt.Errorf("failed to find a primary network configuration for the scale set")
+}

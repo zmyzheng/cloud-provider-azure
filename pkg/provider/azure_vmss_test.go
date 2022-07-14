@@ -1854,11 +1854,11 @@ func TestGetConfigForScaleSetByIPFamily(t *testing.T) {
 		},
 	}
 
-	ipConfig, err := ss.getConfigForScaleSetByIPFamily(config, "vmss-vm-000000", true)
+	ipConfig, err := getConfigForScaleSetByIPFamily(config, "vmss-vm-000000", true)
 	assert.Nil(t, err, "getConfigForScaleSetByIPFamily should find the IPV6 config")
 	assert.Equal(t, (*config.IPConfigurations)[1], *ipConfig, "getConfigForScaleSetByIPFamily should find the IPV6 config")
 
-	ipConfig, err = ss.getConfigForScaleSetByIPFamily(config, "vmss-vm-000000", false)
+	ipConfig, err = getConfigForScaleSetByIPFamily(config, "vmss-vm-000000", false)
 	assert.Nil(t, err, "getConfigForScaleSetByIPFamily should find the IPV4 config")
 	assert.Equal(t, (*config.IPConfigurations)[0], *ipConfig, "getConfigForScaleSetByIPFamily should find the IPV4 config")
 }
