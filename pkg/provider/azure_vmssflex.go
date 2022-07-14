@@ -24,12 +24,14 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-08-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
+	utilnet "k8s.io/utils/net"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 )
@@ -270,7 +272,7 @@ func (fs *FlexScaleSet) GetPowerStatusByNodeName(name string) (powerState string
 
 // GetPrimaryInterface gets machine primary network interface by node name.
 func (fs *FlexScaleSet) GetPrimaryInterface(nodeName string) (network.Interface, error) {
-	machine, err := fs.getVmssFlexVMWithoutInstanceView(nodeName, azcache.CacheReadTypeUnsafe)
+	machine, err := fs.getVmssFlexVMWithoutInstanceView(nodeName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		klog.Errorf("fs.GetInstanceTypeByNodeName(%s) failed: fs.getVmssFlexVMWithoutInstanceView(%s) err=%v", nodeName, nodeName, err)
 		return network.Interface{}, err
@@ -437,8 +439,130 @@ func (fs *FlexScaleSet) GetNodeCIDRMasksByProviderID(providerID string) (int, in
 
 }
 
-// EnsureHostsInPool ensures the given Node's primary IP configurations are
-// participating in the specified LoadBalancer Backend Pool.
-func (fs *FlexScaleSet) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node, backendPoolID string, vmSetName string) error {
+// -------------------------------------
+// EnsureHostInPool ensures the given VM's Primary NIC's Primary IP Configuration is
+// participating in the specified LoadBalancer Backend Pool, which returns (resourceGroup, vmasName, instanceID, vmssVM, error).
+func (fs *FlexScaleSet) EnsureHostInPool(service *v1.Service, nodeName types.NodeName, backendPoolID string, vmSetNameOfLB string) (string, string, string, *compute.VirtualMachineScaleSetVM, error) {
+	serviceName := getServiceName(service)
+	vmName := mapNodeNameToVMName(nodeName)
+	vmssFlexName, err := fs.getNodeVmssFlexName(vmName)
+	if err != nil {
+		klog.Errorf("EnsureHostInPool: failed to get VMSS Flex Name %s: %v", vmName, err)
+		return "", "", "", nil, nil
+	}
+
+	// Check scale set name:
+	// - For basic SKU load balancer, return nil if the node's scale set is mismatched with vmSetNameOfLB.
+	// - For single standard SKU load balancer, backend could belong to multiple VMSS, so we
+	//   don't check vmSet for it.
+	// - For multiple standard SKU load balancers, the behavior is similar to the basic load balancer
+	needCheck := false
+	if !fs.useStandardLoadBalancer() {
+		// need to check the vmSet name when using the basic LB
+		needCheck = true
+	} else if fs.EnableMultipleStandardLoadBalancers {
+		// need to check the vmSet name when using multiple standard LBs
+		needCheck = true
+
+		// ensure the vm that is supposed to share the primary SLB in the backendpool of the primary SLB
+		if strings.EqualFold(fs.GetPrimaryVMSetName(), vmSetNameOfLB) &&
+			fs.getVMSetNamesSharingPrimarySLB().Has(strings.ToLower(vmssFlexName)) {
+			klog.V(4).Infof("EnsureHostInPool: the vm %s in the vmSet %s is supposed to share the primary SLB",
+				nodeName, vmssFlexName)
+			needCheck = false
+		}
+	}
+	if vmSetNameOfLB != "" && needCheck && !strings.EqualFold(vmSetNameOfLB, vmssFlexName) {
+		klog.V(3).Infof("EnsureHostInPool skips node %s because it is not in the ScaleSet %s", vmName, vmSetNameOfLB)
+		return "", "", "", nil, errNotInVMSet
+	}
+
+	nic, err := fs.GetPrimaryInterface(vmName)
+	if err != nil {
+		if errors.Is(err, cloudprovider.InstanceNotFound) {
+			klog.Infof("EnsureHostInPool: skipping node %s because it is not found", vmName)
+			return "", "", "", nil, nil
+		}
+
+		klog.Errorf("error: fs.EnsureHostInPool(%s), s.GetPrimaryInterface(%s), vmSetNameOfLB: %s, err=%v", vmName, vmName, vmSetNameOfLB, err)
+		return "", "", "", nil, err
+	}
+	if nic.ProvisioningState == consts.NicFailedState {
+		klog.Warningf("EnsureHostInPool skips node %s because its primary nic %s is in Failed state", nodeName, *nic.Name)
+		return "", "", "", nil, nil
+	}
+
+	var primaryIPConfig *network.InterfaceIPConfiguration
+	ipv6 := utilnet.IsIPv6String(service.Spec.ClusterIP)
+	if !fs.Cloud.ipv6DualStackEnabled && !ipv6 {
+		primaryIPConfig, err = getPrimaryIPConfig(nic)
+		if err != nil {
+			return "", "", "", nil, err
+		}
+	} else {
+		primaryIPConfig, err = getIPConfigByIPFamily(nic, ipv6)
+		if err != nil {
+			return "", "", "", nil, err
+		}
+	}
+
+	foundPool := false
+	newBackendPools := []network.BackendAddressPool{}
+	if primaryIPConfig.LoadBalancerBackendAddressPools != nil {
+		newBackendPools = *primaryIPConfig.LoadBalancerBackendAddressPools
+	}
+	for _, existingPool := range newBackendPools {
+		if strings.EqualFold(backendPoolID, *existingPool.ID) {
+			foundPool = true
+			break
+		}
+	}
+	// The backendPoolID has already been found from existing LoadBalancerBackendAddressPools.
+	if foundPool {
+		return "", "", "", nil, nil
+	}
+
+	if fs.useStandardLoadBalancer() && len(newBackendPools) > 0 {
+		// Although standard load balancer supports backends from multiple availability
+		// sets, the same network interface couldn't be added to more than one load balancer of
+		// the same type. Omit those nodes (e.g. masters) so Azure ARM won't complain
+		// about this.
+		newBackendPoolsIDs := make([]string, 0, len(newBackendPools))
+		for _, pool := range newBackendPools {
+			if pool.ID != nil {
+				newBackendPoolsIDs = append(newBackendPoolsIDs, *pool.ID)
+			}
+		}
+		isSameLB, oldLBName, err := isBackendPoolOnSameLB(backendPoolID, newBackendPoolsIDs)
+		if err != nil {
+			return "", "", "", nil, err
+		}
+		if !isSameLB {
+			klog.V(4).Infof("Node %q has already been added to LB %q, omit adding it to a new one", nodeName, oldLBName)
+			return "", "", "", nil, nil
+		}
+	}
+
+	newBackendPools = append(newBackendPools,
+		network.BackendAddressPool{
+			ID: to.StringPtr(backendPoolID),
+		})
+
+	primaryIPConfig.LoadBalancerBackendAddressPools = &newBackendPools
+
+	nicName := *nic.Name
+	klog.V(3).Infof("nicupdate(%s): nic(%s) - updating", serviceName, nicName)
+	err = fs.CreateOrUpdateInterface(service, nic)
+	if err != nil {
+		return "", "", "", nil, err
+	}
+
+	// Get the node resource group.
+	nodeResourceGroup, err := fs.GetNodeResourceGroup(vmName)
+	if err != nil {
+		return "", "", "", nil, err
+	}
+
+	return nodeResourceGroup, vmssFlexName, vmName, nil, nil
 
 }
