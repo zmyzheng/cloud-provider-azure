@@ -1343,8 +1343,9 @@ func (ss *ScaleSet) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node, bac
 		mc.ObserveOperationWithResult(isOperationSucceeded)
 	}()
 
-	hostUpdates := make([]func() error, 0, len(nodes))
-	nodeUpdates := make(map[vmssMetaInfo]map[string]compute.VirtualMachineScaleSetVM)
+	vmssUniformNodes := make([]*v1.Node, 0)
+	vmssFlexNodes := make([]*v1.Node, 0)
+	vmasNodes := make([]*v1.Node, 0)
 	errors := make([]error, 0)
 	for _, node := range nodes {
 		localNodeName := node.Name
@@ -1371,17 +1372,12 @@ func (ss *ScaleSet) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node, bac
 			errors = append(errors, err)
 			continue
 		}
-
 		if managedByAS {
 			// VMAS nodes should also be added to the SLB backends.
 			if ss.useStandardLoadBalancer() {
-				hostUpdates = append(hostUpdates, func() error {
-					_, _, _, _, err := ss.availabilitySet.EnsureHostInPool(service, types.NodeName(localNodeName), backendPoolID, vmSetNameOfLB)
-					return err
-				})
+				vmasNodes = append(vmasNodes, node)
 				continue
 			}
-
 			klog.V(3).Infof("EnsureHostsInPool skips node %s because VMAS nodes couldn't be added to basic LB with VMSS backends", localNodeName)
 			continue
 		}
@@ -1395,15 +1391,51 @@ func (ss *ScaleSet) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node, bac
 		if managedByVmssFlex {
 			// Vmss Flex nodes should also be added to the SLB backends.
 			if ss.useStandardLoadBalancer() {
-				hostUpdates = append(hostUpdates, func() error {
-					_, _, _, _, err := ss.flexScaleSet.EnsureHostInPool(service, types.NodeName(localNodeName), backendPoolID, vmSetNameOfLB)
-					return err
-				})
+				vmssFlexNodes = append(vmssFlexNodes, node)
 				continue
 			}
-
-			// TODO: change this:
 			klog.V(3).Infof("EnsureHostsInPool skips node %s because VMSS Flex nodes deos not support Basic Load Balancer", localNodeName)
+			continue
+		}
+		vmssUniformNodes = append(vmssUniformNodes, node)
+	}
+
+	vmssFlexError := ss.flexScaleSet.EnsureHostsInPool(service, vmssFlexNodes, backendPoolID, vmSetNameOfLB)
+	vmasError := ss.availabilitySet.EnsureHostsInPool(service, vmasNodes, backendPoolID, vmSetNameOfLB)
+	vmssUniformError := ss.ensureHostsInPool(service, vmssUniformNodes, backendPoolID, vmSetNameOfLB)
+	errors = append(errors, vmssFlexError)
+	errors = append(errors, vmasError)
+	errors = append(errors, vmssUniformError)
+	allErrors := utilerrors.Flatten(utilerrors.NewAggregate(errors))
+	return allErrors
+
+}
+
+func (ss *ScaleSet) ensureHostsInPool(service *v1.Service, nodes []*v1.Node, backendPoolID string, vmSetNameOfLB string) error {
+	mc := metrics.NewMetricContext("services", "vmss_ensure_hosts_in_pool", ss.ResourceGroup, ss.SubscriptionID, getServiceName(service))
+	isOperationSucceeded := false
+	defer func() {
+		mc.ObserveOperationWithResult(isOperationSucceeded)
+	}()
+
+	hostUpdates := make([]func() error, 0, len(nodes))
+	nodeUpdates := make(map[vmssMetaInfo]map[string]compute.VirtualMachineScaleSetVM)
+	errors := make([]error, 0)
+	for _, node := range nodes {
+		localNodeName := node.Name
+
+		if ss.useStandardLoadBalancer() && ss.excludeMasterNodesFromStandardLB() && isControlPlaneNode(node) {
+			klog.V(4).Infof("Excluding master node %q from load balancer backendpool %q", localNodeName, backendPoolID)
+			continue
+		}
+
+		shouldExcludeLoadBalancer, err := ss.ShouldNodeExcludedFromLoadBalancer(localNodeName)
+		if err != nil {
+			klog.Errorf("ShouldNodeExcludedFromLoadBalancer(%s) failed with error: %v", localNodeName, err)
+			return err
+		}
+		if shouldExcludeLoadBalancer {
+			klog.V(4).Infof("Excluding unmanaged/external-resource-group node %q", localNodeName)
 			continue
 		}
 
