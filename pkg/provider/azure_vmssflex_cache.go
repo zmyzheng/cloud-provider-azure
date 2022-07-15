@@ -304,3 +304,31 @@ func (fs *FlexScaleSet) getVmssFlexIDByName(vmssFlexName string) (string, error)
 		return "", errors.New("failed to get vmssFlexID by name")
 	}
 }
+
+func (fs *FlexScaleSet) getVmssFlexByName(vmssFlexName string) (*compute.VirtualMachineScaleSet, error) {
+	cached, err := fs.vmssFlexCache.Get(consts.VmssFlexKey, azcache.CacheReadTypeDefault)
+	if err != nil {
+		return nil, err
+	}
+
+	var targetVmssFlex *compute.VirtualMachineScaleSet
+	vmssFlexes := cached.(*sync.Map)
+	vmssFlexes.Range(func(key, value interface{}) bool {
+		vmssFlexID := key.(string)
+		vmssFlex := value.(*compute.VirtualMachineScaleSet)
+		name, err := getLastSegment(vmssFlexID, "/")
+		if err != nil {
+			return true
+		}
+		if strings.EqualFold(name, vmssFlexName) {
+			targetVmssFlex = vmssFlex
+			return false
+		}
+		return true
+	})
+	if targetVmssFlex != nil {
+		return targetVmssFlex, nil
+	} else {
+		return nil, errors.New("failed to get vmssFlex by name")
+	}
+}
