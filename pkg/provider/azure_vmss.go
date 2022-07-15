@@ -1403,7 +1403,7 @@ func (ss *ScaleSet) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node, bac
 			}
 
 			// TODO: change this:
-			klog.V(3).Infof("EnsureHostsInPool skips node %s because VMAS nodes couldn't be added to basic LB with VMSS backends", localNodeName)
+			klog.V(3).Infof("EnsureHostsInPool skips node %s because VMSS Flex nodes deos not support Basic Load Balancer", localNodeName)
 			continue
 		}
 

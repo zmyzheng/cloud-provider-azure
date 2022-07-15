@@ -29,11 +29,13 @@ import (
 	"github.com/Azure/go-autorest/autorest/to"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	utilnet "k8s.io/utils/net"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
+	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 )
 
 var (
@@ -733,4 +735,55 @@ func (fs *FlexScaleSet) getPrimaryNetworkInterfaceConfigurationForScaleSet(netwo
 	}
 
 	return nil, fmt.Errorf("failed to find a primary network configuration for the scale set")
+}
+
+// EnsureHostsInPool ensures the given Node's primary IP configurations are
+// participating in the specified LoadBalancer Backend Pool.
+func (fs *FlexScaleSet) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node, backendPoolID string, vmSetNameOfLB string) error {
+	mc := metrics.NewMetricContext("services", "vmssflex_ensure_hosts_in_pool", fs.ResourceGroup, fs.SubscriptionID, getServiceName(service))
+	isOperationSucceeded := false
+	defer func() {
+		mc.ObserveOperationWithResult(isOperationSucceeded)
+	}()
+	hostUpdates := make([]func() error, 0, len(nodes))
+
+	for _, node := range nodes {
+		localNodeName := node.Name
+		if fs.useStandardLoadBalancer() && fs.excludeMasterNodesFromStandardLB() && isControlPlaneNode(node) {
+			klog.V(4).Infof("Excluding master node %q from load balancer backendpool %q", localNodeName, backendPoolID)
+			continue
+		}
+
+		shouldExcludeLoadBalancer, err := fs.ShouldNodeExcludedFromLoadBalancer(localNodeName)
+		if err != nil {
+			klog.Errorf("ShouldNodeExcludedFromLoadBalancer(%s) failed with error: %v", localNodeName, err)
+			return err
+		}
+		if shouldExcludeLoadBalancer {
+			klog.V(4).Infof("Excluding unmanaged/external-resource-group node %q", localNodeName)
+			continue
+		}
+
+		f := func() error {
+			_, _, _, _, err := fs.EnsureHostInPool(service, types.NodeName(localNodeName), backendPoolID, vmSetNameOfLB)
+			if err != nil {
+				return fmt.Errorf("ensure(%s): backendPoolID(%s) - failed to ensure host in pool: %w", getServiceName(service), backendPoolID, err)
+			}
+			return nil
+		}
+		hostUpdates = append(hostUpdates, f)
+	}
+
+	errs := utilerrors.AggregateGoroutines(hostUpdates...)
+	if errs != nil {
+		return utilerrors.Flatten(errs)
+	}
+
+	err := fs.ensureVMSSFlexInPool(service, nodes, backendPoolID, vmSetNameOfLB)
+	if err != nil {
+		return err
+	}
+
+	isOperationSucceeded = true
+	return nil
 }
