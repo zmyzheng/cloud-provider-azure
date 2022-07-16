@@ -1079,9 +1079,7 @@ func (as *availabilitySet) EnsureBackendPoolDeleted(service *v1.Service, backend
 	for i := range ipConfigurationIDs {
 		ipConfigurationID := ipConfigurationIDs[i]
 		nodeName, _, err := as.GetNodeNameByIPConfigurationID(ipConfigurationID)
-		if err != nil && !errors.Is(err, cloudprovider.InstanceNotFound) {
-			klog.Errorf("Failed to GetNodeNameByIPConfigurationID(%s): %v", ipConfigurationID, err)
-			allErrs = append(allErrs, err)
+		if err != nil {
 			continue
 		}
 		if nodeName == "" {
@@ -1225,6 +1223,9 @@ func (as *availabilitySet) GetNodeNameByIPConfigurationID(ipConfigurationID stri
 		asID = to.String(vm.AvailabilitySet.ID)
 	}
 	if asID == "" {
+		if vm.VirtualMachineProperties != nil && vm.VirtualMachineScaleSet != nil {
+			return "", "", errors.New("VM is not a vmas vm or standaloen VM")
+		}
 		return vmName, "", nil
 	}
 

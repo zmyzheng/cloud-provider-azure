@@ -1649,6 +1649,23 @@ func (ss *ScaleSet) ensureBackendPoolDeletedFromVMSS(service *v1.Service, backen
 
 // EnsureBackendPoolDeleted ensures the loadBalancer backendAddressPools deleted from the specified nodes.
 func (ss *ScaleSet) EnsureBackendPoolDeleted(service *v1.Service, backendPoolID, vmSetName string, backendAddressPools *[]network.BackendAddressPool, deleteFromVMSet bool) error {
+	err := ss.flexScaleSet.EnsureBackendPoolDeleted(service, backendPoolID, vmSetName, backendAddressPools, deleteFromVMSet)
+	if err != nil {
+		return err
+	}
+	ss.EnsureBackendPoolDeleted(service, backendPoolID, vmSetName, backendAddressPools, deleteFromVMSet)
+	if err != nil {
+		return err
+	}
+	ss.availabilitySet.EnsureBackendPoolDeleted(service, backendPoolID, vmSetName, backendAddressPools, deleteFromVMSet)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// EnsureBackendPoolDeleted ensures the loadBalancer backendAddressPools deleted from the specified nodes.
+func (ss *ScaleSet) ensureBackendPoolDeleted(service *v1.Service, backendPoolID, vmSetName string, backendAddressPools *[]network.BackendAddressPool, deleteFromVMSet bool) error {
 	// Returns nil if backend address pools already deleted.
 	if backendAddressPools == nil {
 		return nil

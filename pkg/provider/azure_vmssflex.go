@@ -367,7 +367,7 @@ func (fs *FlexScaleSet) GetPrivateIPsByNodeName(name string) ([]string, error) {
 func (fs *FlexScaleSet) GetNodeNameByIPConfigurationID(ipConfigurationID string) (string, string, error) {
 	matches := nicIDRE.FindStringSubmatch(ipConfigurationID)
 	if len(matches) != 3 {
-		klog.V(4).Infof("Can not extract VM name from ipConfigurationID (%s)", ipConfigurationID)
+		klog.V(4).Infof("Can not extract nic name from ipConfigurationID (%s)", ipConfigurationID)
 		return "", "", fmt.Errorf("invalid ip config ID %s", ipConfigurationID)
 	}
 
@@ -764,6 +764,10 @@ func (fs *FlexScaleSet) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node,
 			continue
 		}
 
+		defer func() {
+			_ = fs.deleteCacheForNode(localNodeName)
+		}()
+
 		f := func() error {
 			_, _, _, _, err := fs.EnsureHostInPool(service, types.NodeName(localNodeName), backendPoolID, vmSetNameOfLB)
 			if err != nil {
@@ -877,5 +881,145 @@ func (fs *FlexScaleSet) EnsureBackendPoolDeletedFromVMSets(vmssNamesMap map[stri
 		return utilerrors.Flatten(utilerrors.NewAggregate(errors))
 	}
 
+	return nil
+}
+
+// EnsureBackendPoolDeleted ensures the loadBalancer backendAddressPools deleted from the specified nodes.
+func (fs *FlexScaleSet) EnsureBackendPoolDeleted(service *v1.Service, backendPoolID, vmSetName string, backendAddressPools *[]network.BackendAddressPool, deleteFromVMSet bool) error {
+	// Returns nil if backend address pools already deleted.
+	if backendAddressPools == nil {
+		return nil
+	}
+
+	mc := metrics.NewMetricContext("services", "vmssflex_ensure_backend_pool_deleted", fs.ResourceGroup, fs.SubscriptionID, getServiceName(service))
+	isOperationSucceeded := false
+	defer func() {
+		mc.ObserveOperationWithResult(isOperationSucceeded)
+	}()
+
+	ipConfigurationIDs := []string{}
+	for _, backendPool := range *backendAddressPools {
+		if strings.EqualFold(to.String(backendPool.ID), backendPoolID) && backendPool.BackendAddressPoolPropertiesFormat != nil && backendPool.BackendIPConfigurations != nil {
+			for _, ipConf := range *backendPool.BackendIPConfigurations {
+				if ipConf.ID == nil {
+					continue
+				}
+
+				ipConfigurationIDs = append(ipConfigurationIDs, *ipConf.ID)
+			}
+		}
+	}
+
+	vmssFlexNamesMap := make(map[string]bool)
+	vmssFlexVMNameMap := make(map[string]bool)
+	allErrs := make([]error, 0)
+	for i := range ipConfigurationIDs {
+		ipConfigurationID := ipConfigurationIDs[i]
+		nodeName, vmssFlexName, err := fs.GetNodeNameByIPConfigurationID(ipConfigurationID)
+		if err != nil {
+			continue
+		}
+		if nodeName == "" {
+			continue
+		}
+		resourceGroupName, err := fs.GetNodeResourceGroup(nodeName)
+		// only vmsses in the resource group same as it's in azure config are included
+		if strings.EqualFold(resourceGroupName, fs.ResourceGroup) {
+			if fs.useStandardLoadBalancer() && !fs.EnableMultipleStandardLoadBalancers {
+				vmssFlexNamesMap[vmssFlexName] = true
+				vmssFlexVMNameMap[nodeName] = true
+			} else {
+				if strings.EqualFold(vmssFlexName, vmSetName) {
+					vmssFlexNamesMap[vmSetName] = true
+					vmssFlexVMNameMap[nodeName] = true
+				} else {
+					// Only remove nodes belonging to specified vmSet to basic LB backends.
+					continue
+				}
+			}
+
+		}
+	}
+
+	// 1. Ensure the backendPoolID is deleted from the VMSS.
+	if deleteFromVMSet {
+		err := fs.EnsureBackendPoolDeletedFromVMSets(vmssFlexNamesMap, backendPoolID)
+		if err != nil {
+			allErrs = append(allErrs, err)
+		}
+	}
+
+	// 2. Ensure the backendPoolID is deleted from the VMSS VMs.
+	err := fs.ensureBackendPoolDeletedFromNode(vmssFlexVMNameMap, backendPoolID)
+	if err != nil {
+		allErrs = append(allErrs, err)
+	}
+
+	if len(allErrs) > 0 {
+		return utilerrors.Flatten(utilerrors.NewAggregate(allErrs))
+	}
+
+	isOperationSucceeded = true
+	return nil
+
+}
+
+func (fs *FlexScaleSet) ensureBackendPoolDeletedFromNode(vmssFlexVMNameMap map[string]bool, backendPoolID string) error {
+	nicUpdaters := make([]func() error, 0)
+	allErrs := make([]error, 0)
+	for nodeName, _ := range vmssFlexVMNameMap {
+		nic, err := fs.GetPrimaryInterface(nodeName)
+		if err != nil {
+			allErrs = append(allErrs, err)
+			continue
+		}
+		if nic.ProvisioningState == consts.NicFailedState {
+			klog.Warningf("EnsureBackendPoolDeleted skips node %s because its primary nic %s is in Failed state", nodeName, *nic.Name)
+			continue
+		}
+
+		if nic.InterfacePropertiesFormat != nil && nic.InterfacePropertiesFormat.IPConfigurations != nil {
+			newIPConfigs := *nic.IPConfigurations
+			for j, ipConf := range newIPConfigs {
+				if !to.Bool(ipConf.Primary) {
+					continue
+				}
+				// found primary ip configuration
+				if ipConf.LoadBalancerBackendAddressPools != nil {
+					newLBAddressPools := *ipConf.LoadBalancerBackendAddressPools
+					for k := len(newLBAddressPools) - 1; k >= 0; k-- {
+						pool := newLBAddressPools[k]
+						if strings.EqualFold(to.String(pool.ID), backendPoolID) {
+							newLBAddressPools = append(newLBAddressPools[:k], newLBAddressPools[k+1:]...)
+							break
+						}
+					}
+					newIPConfigs[j].LoadBalancerBackendAddressPools = &newLBAddressPools
+				}
+			}
+			nic.IPConfigurations = &newIPConfigs
+			defer func() {
+				_ = fs.deleteCacheForNode(nodeName)
+			}()
+			nicUpdaters = append(nicUpdaters, func() error {
+				ctx, cancel := getContextWithCancel()
+				defer cancel()
+				klog.V(2).Infof("EnsureBackendPoolDeleted begins to CreateOrUpdate for NIC(%s, %s) with backendPoolID %s", s.resourceGroup, to.String(nic.Name), backendPoolID)
+				rerr := fs.InterfacesClient.CreateOrUpdate(ctx, fs.ResourceGroup, to.String(nic.Name), nic)
+				if rerr != nil {
+					klog.Errorf("EnsureBackendPoolDeleted CreateOrUpdate for NIC(%s, %s) failed with error %v", fs.resourceGroup, to.String(nic.Name), rerr.Error())
+					return rerr.Error()
+				}
+				return nil
+			})
+		}
+	}
+	errs := utilerrors.AggregateGoroutines(nicUpdaters...)
+	if errs != nil {
+		allErrs = append(allErrs, utilerrors.Flatten(errs))
+	}
+	if len(allErrs) > 0 {
+		return utilerrors.Flatten(utilerrors.NewAggregate(allErrs))
+	}
 	return nil
 }
