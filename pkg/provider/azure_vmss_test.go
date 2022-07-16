@@ -1832,7 +1832,7 @@ func TestGetConfigForScaleSetByIPFamily(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	ss, err := NewTestScaleSet(ctrl)
+	_, err := NewTestScaleSet(ctrl)
 	assert.NoError(t, err, "unexpected error when creating test VMSS")
 
 	config := &compute.VirtualMachineScaleSetNetworkConfiguration{
