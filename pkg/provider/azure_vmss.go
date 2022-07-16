@@ -110,6 +110,11 @@ func newScaleSet(az *Cloud) (VMSet, error) {
 		}
 	}
 
+	ss.vmssFlexNodesCache, err = ss.newVmssFlexNodesCache()
+	if err != nil {
+		return nil, err
+	}
+
 	ss.vmssCache, err = ss.newVMSSCache()
 	if err != nil {
 		return nil, err
