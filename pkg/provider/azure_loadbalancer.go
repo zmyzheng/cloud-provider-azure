@@ -436,8 +436,10 @@ func (az *Cloud) cleanOrphanedLoadBalancer(lb *network.LoadBalancer, existingLBs
 func (az *Cloud) safeDeleteLoadBalancer(lb network.LoadBalancer, clusterName, vmSetName string, service *v1.Service) *retry.Error {
 	if isLBBackendPoolTypeIPConfig(service, &lb, clusterName) {
 		lbBackendPoolID := az.getBackendPoolID(to.String(lb.Name), az.getLoadBalancerResourceGroup(), getBackendPoolName(clusterName, service))
+		klog.V(2).Infof("az.safeDeleteLoadBalancer()")
 		err := az.VMSet.EnsureBackendPoolDeleted(service, lbBackendPoolID, vmSetName, lb.BackendAddressPools, true)
 		if err != nil {
+			klog.Errorf("safeDeleteLoadBalancer: failed to EnsureBackendPoolDeleted: %w", err)
 			return retry.NewError(false, fmt.Errorf("safeDeleteLoadBalancer: failed to EnsureBackendPoolDeleted: %w", err))
 		}
 	}

@@ -282,6 +282,7 @@ func (fs *FlexScaleSet) GetPowerStatusByNodeName(name string) (powerState string
 
 // GetPrimaryInterface gets machine primary network interface by node name.
 func (fs *FlexScaleSet) GetPrimaryInterface(nodeName string) (network.Interface, error) {
+	klog.V(2).Infof("go into fs.GetPrimaryInterface(%s)", nodeName)
 	machine, err := fs.getVmssFlexVMWithoutInstanceView(nodeName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		klog.Errorf("fs.GetInstanceTypeByNodeName(%s) failed: fs.getVmssFlexVMWithoutInstanceView(%s) err=%v", nodeName, nodeName, err)
@@ -953,6 +954,7 @@ func (fs *FlexScaleSet) EnsureBackendPoolDeleted(service *v1.Service, backendPoo
 	}
 
 	// 1. Ensure the backendPoolID is deleted from the VMSS.
+	klog.V(2).Infof("1. Ensure the backendPoolID is deleted from the VMSS.")
 	if deleteFromVMSet {
 		err := fs.EnsureBackendPoolDeletedFromVMSets(vmssFlexNamesMap, backendPoolID)
 		if err != nil {
@@ -960,8 +962,11 @@ func (fs *FlexScaleSet) EnsureBackendPoolDeleted(service *v1.Service, backendPoo
 		}
 	}
 
+	klog.V(2).Infof("2. Ensure the backendPoolID is deleted from the VMSS VMs.")
 	// 2. Ensure the backendPoolID is deleted from the VMSS VMs.
+	klog.V(2).Infof("go into fs.ensureBackendPoolDeletedFromNode, vmssFlexVMNameMap: %s, size: %s", vmssFlexVMNameMap, len(vmssFlexVMNameMap))
 	err := fs.ensureBackendPoolDeletedFromNode(vmssFlexVMNameMap, backendPoolID)
+	klog.V(2).Infof("exit from fs.ensureBackendPoolDeletedFromNode")
 	if err != nil {
 		allErrs = append(allErrs, err)
 	}
@@ -978,7 +983,10 @@ func (fs *FlexScaleSet) EnsureBackendPoolDeleted(service *v1.Service, backendPoo
 func (fs *FlexScaleSet) ensureBackendPoolDeletedFromNode(vmssFlexVMNameMap map[string]bool, backendPoolID string) error {
 	nicUpdaters := make([]func() error, 0)
 	allErrs := make([]error, 0)
-	for nodeName, _ := range vmssFlexVMNameMap {
+	i := 0
+	for nodeName := range vmssFlexVMNameMap {
+		i++
+		klog.V(2).Infof("i = %s", i)
 		nic, err := fs.GetPrimaryInterface(nodeName)
 		if err != nil {
 			allErrs = append(allErrs, err)
@@ -1017,6 +1025,7 @@ func (fs *FlexScaleSet) ensureBackendPoolDeletedFromNode(vmssFlexVMNameMap map[s
 				defer cancel()
 				klog.V(2).Infof("EnsureBackendPoolDeleted begins to CreateOrUpdate for NIC(%s, %s) with backendPoolID %s", fs.resourceGroup, to.String(nic.Name), backendPoolID)
 				rerr := fs.InterfacesClient.CreateOrUpdate(ctx, fs.ResourceGroup, to.String(nic.Name), nic)
+				klog.V(2).Infof("EnsureBackendPoolDeleted done")
 				if rerr != nil {
 					klog.Errorf("EnsureBackendPoolDeleted CreateOrUpdate for NIC(%s, %s) failed with error %v", fs.resourceGroup, to.String(nic.Name), rerr.Error())
 					return rerr.Error()
@@ -1025,6 +1034,7 @@ func (fs *FlexScaleSet) ensureBackendPoolDeletedFromNode(vmssFlexVMNameMap map[s
 			})
 		}
 	}
+	klog.V(2).Infof("nicUpdaters size: %s", len(nicUpdaters))
 	errs := utilerrors.AggregateGoroutines(nicUpdaters...)
 	if errs != nil {
 		allErrs = append(allErrs, utilerrors.Flatten(errs))
