@@ -931,6 +931,9 @@ func (fs *FlexScaleSet) EnsureBackendPoolDeleted(service *v1.Service, backendPoo
 			continue
 		}
 		resourceGroupName, err := fs.GetNodeResourceGroup(nodeName)
+		if err != nil {
+			continue
+		}
 		// only vmsses in the resource group same as it's in azure config are included
 		if strings.EqualFold(resourceGroupName, fs.ResourceGroup) {
 			if fs.useStandardLoadBalancer() && !fs.EnableMultipleStandardLoadBalancers {

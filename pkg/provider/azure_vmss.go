@@ -1663,11 +1663,16 @@ func (ss *ScaleSet) EnsureBackendPoolDeleted(service *v1.Service, backendPoolID,
 	if err != nil {
 		return err
 	}
-	ss.EnsureBackendPoolDeleted(service, backendPoolID, vmSetName, backendAddressPools, deleteFromVMSet)
+	err = ss.EnsureBackendPoolDeleted(service, backendPoolID, vmSetName, backendAddressPools, deleteFromVMSet)
 	if err != nil {
 		return err
 	}
-	ss.availabilitySet.EnsureBackendPoolDeleted(service, backendPoolID, vmSetName, backendAddressPools, deleteFromVMSet)
+	err = ss.availabilitySet.EnsureBackendPoolDeleted(service, backendPoolID, vmSetName, backendAddressPools, deleteFromVMSet)
+	if err != nil {
+		return err
+	}
+
+	err = ss.ensureBackendPoolDeleted(service, backendPoolID, vmSetName, backendAddressPools, deleteFromVMSet)
 	if err != nil {
 		return err
 	}
