@@ -70,7 +70,13 @@ func newFlexScaleSet(az *Cloud) (VMSet, error) {
 		return nil, err
 	}
 	fs.vmssFlexVMCache, err = fs.newVmssFlexVMCache()
+	if err != nil {
+		return nil, err
+	}
 	fs.vmssFlexVMStatusCache, err = fs.newVmssFlexVMStatusCache()
+	if err != nil {
+		return nil, err
+	}
 
 	return fs, nil
 }
@@ -95,6 +101,7 @@ func (fs *FlexScaleSet) GetPrimaryVMSetName() string {
 
 // getNodeVMSetName returns the vmss flex name by the node name.
 func (fs *FlexScaleSet) getNodeVmssFlexName(nodeName string) (string, error) {
+	klog.V(2).Infof("calling fs.getNodeVmssFlexName(%s)", nodeName)
 	vmssFlexID, err := fs.getNodeVmssFlexID(nodeName)
 	if err != nil {
 		return "", err
@@ -110,6 +117,7 @@ func (fs *FlexScaleSet) getNodeVmssFlexName(nodeName string) (string, error) {
 // GetNodeVMSetName returns the availability set or vmss name by the node name.
 // It will return empty string when using standalone vms.
 func (fs *FlexScaleSet) GetNodeVMSetName(node *v1.Node) (string, error) {
+	klog.V(2).Infof("fs.GetNodeVMSetName")
 	return fs.getNodeVmssFlexName(node.Name)
 }
 

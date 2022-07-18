@@ -78,7 +78,7 @@ type ScaleSet struct {
 	vmssVMCache               *sync.Map // [resourcegroup/vmssname]*azcache.TimedCache
 	availabilitySetNodesCache *azcache.TimedCache
 
-	flexScaleSet       *FlexScaleSet
+	flexScaleSet       VMSet
 	vmssFlexNodesCache *azcache.TimedCache
 
 	// lockMap in cache refresh
@@ -116,6 +116,11 @@ func newScaleSet(az *Cloud) (VMSet, error) {
 	}
 
 	ss.vmssCache, err = ss.newVMSSCache()
+	if err != nil {
+		return nil, err
+	}
+
+	ss.flexScaleSet, err = newFlexScaleSet(az)
 	if err != nil {
 		return nil, err
 	}
@@ -1951,6 +1956,7 @@ func (ss *ScaleSet) GetAgentPoolVMSetNames(nodes []*v1.Node) (*[]string, error) 
 			return nil, fmt.Errorf("GetAgentPoolVMSetNames: failed to check if the node %s is managed by VmssFlex: %w", node.Name, err)
 		}
 		if managedByVmssFlex {
+			klog.V(2).Infof("fount vmss flex node: %s", node.Name)
 			vmssFlexVMNodes = append(vmssFlexVMNodes, node)
 			continue
 		}

@@ -140,6 +140,7 @@ func (fs *FlexScaleSet) newVmssFlexVMStatusCache() (*azcache.TimedCache, error) 
 }
 
 func (fs *FlexScaleSet) getNodeVmssFlexID(nodeName string) (string, error) {
+	klog.V(2).Infof("calling fs.getNodeVmssFlexID(%s)", nodeName)
 	vmssFlexID, ok := fs.vmssFlexVMnameToVmssID.Load(nodeName)
 	if !ok {
 		machine, err := fs.getVirtualMachine(types.NodeName(nodeName), azcache.CacheReadTypeUnsafe)
@@ -225,12 +226,6 @@ func (fs *FlexScaleSet) deleteCacheForNode(nodeName string) error {
 	}
 	vmMap := cached.(*sync.Map)
 
-	cached, err = fs.vmssFlexVMStatusCache.Get(vmssFlexID, azcache.CacheReadTypeUnsafe)
-	if err != nil {
-		klog.Errorf("fs.deleteCacheForNode(%s) failed with error: %v", nodeName, err)
-		return err
-	}
-	vmMap = cached.(*sync.Map)
 	vmMap.Delete(nodeName)
 
 	return nil
