@@ -172,7 +172,6 @@ func (mr *MockInterfaceMockRecorder) GetResourceWithQueries(ctx, resourceID, que
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetResourceWithQueries", reflect.TypeOf((*MockInterface)(nil).GetResourceWithQueries), ctx, resourceID, queries)
 }
 
-
 // HeadResource mocks base method.
 func (m *MockInterface) HeadResource(ctx context.Context, resourceID string) (*http.Response, *retry.Error) {
 	m.ctrl.T.Helper()
