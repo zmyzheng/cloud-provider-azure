@@ -112,6 +112,20 @@ func (mr *MockInterfaceMockRecorder) List(ctx, resourceGroupName interface{}) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockInterface)(nil).List), ctx, resourceGroupName)
 }
 
+// ListVmssFlexVMsWithOnlyInstanceView mocks base method.
+func (m *MockInterface) ListVmssFlexVMsWithOnlyInstanceView(ctx context.Context, vmssFlexID string) ([]compute.VirtualMachine, *retry.Error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListVmssFlexVMsWithOnlyInstanceView", ctx, vmssFlexID)
+	ret0, _ := ret[0].([]compute.VirtualMachine)
+	ret1, _ := ret[1].(*retry.Error)
+	return ret0, ret1
+}
+
+// ListVmssFlexVMsWithOnlyInstanceView indicates an expected call of ListVmssFlexVMsWithOnlyInstanceView.
+func (mr *MockInterfaceMockRecorder) ListVmssFlexVMsWithOnlyInstanceView(ctx, vmssFlexID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListVmssFlexVMsWithOnlyInstanceView", reflect.TypeOf((*MockInterface)(nil).ListVmssFlexVMsWithOnlyInstanceView), ctx, vmssFlexID)
+}
 
 // ListVmssFlexVMsWithoutInstanceView mocks base method.
 func (m *MockInterface) ListVmssFlexVMsWithoutInstanceView(ctx context.Context, vmssFlexID string) ([]compute.VirtualMachine, *retry.Error) {
@@ -126,21 +140,6 @@ func (m *MockInterface) ListVmssFlexVMsWithoutInstanceView(ctx context.Context, 
 func (mr *MockInterfaceMockRecorder) ListVmssFlexVMsWithoutInstanceView(ctx, vmssFlexID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListVmssFlexVMsWithoutInstanceView", reflect.TypeOf((*MockInterface)(nil).ListVmssFlexVMsWithoutInstanceView), ctx, vmssFlexID)
-}
-
-// ListVmssFlexVMsWithOnlyInstanceView mocks base method.
-func (m *MockInterface) ListVmssFlexVMsWithOnlyInstanceView(ctx context.Context, vmssFlexID string) ([]compute.VirtualMachine, *retry.Error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListVmssFlexVMsWithOnlyInstanceView", ctx, vmssFlexID)
-	ret0, _ := ret[0].([]compute.VirtualMachine)
-	ret1, _ := ret[1].(*retry.Error)
-	return ret0, ret1
-}
-
-// ListVmssFlexVMsWithOnlyInstanceView indicates an expected call of ListVmssFlexVMsWithOnlyInstanceView.
-func (mr *MockInterfaceMockRecorder) ListVmssFlexVMsWithOnlyInstanceView(ctx, vmssFlexID interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListVmssFlexVMsWithOnlyInstanceView", reflect.TypeOf((*MockInterface)(nil).ListVmssFlexVMsWithOnlyInstanceView), ctx, vmssFlexID)
 }
 
 // Update mocks base method.
