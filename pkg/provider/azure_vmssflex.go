@@ -445,7 +445,7 @@ func (fs *FlexScaleSet) getNodeInformationByIPConfigurationID(ipConfigurationID 
 		return "", "", "", err
 	}
 
-	return vmName, strings.ToLower(vmssFlexName), ipConfigurationID, nil
+	return vmName, strings.ToLower(vmssFlexName), nicName, nil
 }
 
 // ------------------------------------------------------------
