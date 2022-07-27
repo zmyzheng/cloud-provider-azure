@@ -2274,9 +2274,6 @@ func validateConfig(t *testing.T, config string) { //nolint
 	if azureCloud.CloudProviderRateLimitBucket != 5 {
 		t.Errorf("got incorrect value for CloudProviderRateLimitBucket")
 	}
-	if azureCloud.AvailabilitySetNodesCacheTTLInSeconds != 100 {
-		t.Errorf("got incorrect value for availabilitySetNodesCacheTTLInSeconds")
-	}
 	if azureCloud.VmssCacheTTLInSeconds != 100 {
 		t.Errorf("got incorrect value for vmssCacheTTLInSeconds")
 	}
