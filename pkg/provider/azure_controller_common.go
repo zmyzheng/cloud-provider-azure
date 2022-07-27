@@ -124,29 +124,22 @@ func (c *controllerCommon) getNodeVMSet(nodeName types.NodeName, crt azcache.Azu
 		return nil, fmt.Errorf("error of converting vmSet (%q) to ScaleSet with vmType %q", c.cloud.VMSet, c.cloud.VMType)
 	}
 
-	// 3. If the node is managed by availability set, then return ss.availabilitySet.
-	managedByAS, err := ss.isNodeManagedByAvailabilitySet(mapNodeNameToVMName(nodeName), crt)
+	vmManagementType, err := ss.getVMManagementType(mapNodeNameToVMName(nodeName), crt)
 	if err != nil {
 		return nil, err
 	}
-	if managedByAS {
+	// 3. If the node is managed by availability set, then return ss.availabilitySet.
+	if vmManagementType == ManagedByAvSet {
 		// vm is managed by availability set.
 		return ss.availabilitySet, nil
-	}
-
-	// 4. If the node is managed by vmss flex, then return ss.flexScaleSet.
-	managedByVmssFlex, err := ss.isNodeManagedByVmssFlex(mapNodeNameToVMName(nodeName), crt)
-	if err != nil {
-		return nil, err
-	}
-	if managedByVmssFlex {
+	} else if vmManagementType == ManagedByVmssFlex {
+		// 4. If the node is managed by vmss flex, then return ss.flexScaleSet.
 		// vm is managed by vmss flex.
 		return ss.flexScaleSet, nil
+	} else {
+		// 5. Node is managed by vmss
+		return ss, nil
 	}
-
-	// 5. Node is managed by vmss
-	return ss, nil
-
 }
 
 // AttachDisk attaches a disk to vm

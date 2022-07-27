@@ -74,12 +74,11 @@ type ScaleSet struct {
 	// this also allows for clusters with both VM and VMSS nodes.
 	availabilitySet VMSet
 
-	vmssCache                 *azcache.TimedCache
-	vmssVMCache               *sync.Map // [resourcegroup/vmssname]*azcache.TimedCache
-	availabilitySetNodesCache *azcache.TimedCache
+	vmssCache   *azcache.TimedCache
+	vmssVMCache *sync.Map // [resourcegroup/vmssname]*azcache.TimedCache
 
-	flexScaleSet       VMSet
-	vmssFlexNodesCache *azcache.TimedCache
+	flexScaleSet             VMSet
+	nonVmssUniformNodesCache *azcache.TimedCache
 
 	// lockMap in cache refresh
 	lockMap *lockMap
@@ -103,24 +102,17 @@ func newScaleSet(az *Cloud) (VMSet, error) {
 		lockMap:         newLockMap(),
 	}
 
-	if !ss.DisableAvailabilitySetNodes {
-		ss.availabilitySetNodesCache, err = ss.newAvailabilitySetNodesCache()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	ss.vmssFlexNodesCache, err = ss.newVmssFlexNodesCache()
-	if err != nil {
-		return nil, err
-	}
-
 	ss.vmssCache, err = ss.newVMSSCache()
 	if err != nil {
 		return nil, err
 	}
 
 	ss.flexScaleSet, err = newFlexScaleSet(az)
+	if err != nil {
+		return nil, err
+	}
+
+	ss.nonVmssUniformNodesCache, err = ss.newNonVmssUniformNodesCache()
 	if err != nil {
 		return nil, err
 	}
@@ -246,26 +238,22 @@ func (ss *ScaleSet) getVmssVM(nodeName string, crt azcache.AzureCacheReadType) (
 
 // GetPowerStatusByNodeName returns the power state of the specified node.
 func (ss *ScaleSet) GetPowerStatusByNodeName(name string) (powerState string, err error) {
-	managedByAS, err := ss.isNodeManagedByAvailabilitySet(name, azcache.CacheReadTypeUnsafe)
+
+	vmManagementType, err := ss.getVMManagementType(name, azcache.CacheReadTypeUnsafe)
 	if err != nil {
-		klog.Errorf("Failed to check isNodeManagedByAvailabilitySet: %v", err)
+		klog.Errorf("Failed to check VM management type: %v", err)
 		return "", err
 	}
-	if managedByAS {
+
+	if vmManagementType == ManagedByAvSet {
 		// vm is managed by availability set.
 		return ss.availabilitySet.GetPowerStatusByNodeName(name)
 	}
-
-	managedByVmssFlex, err := ss.isNodeManagedByVmssFlex(name, azcache.CacheReadTypeUnsafe)
-	if err != nil {
-		klog.Errorf("Failed to check isNodeManagedByVmssFlex: nodeName %s, error: %v", name, err)
-		return "", err
-	}
-	if managedByVmssFlex {
+	if vmManagementType == ManagedByVmssFlex {
 		// vm is managed by vmss flex.
-		return ss.flexScaleSet.GetPowerStatusByNodeName(name)
+		ss.flexScaleSet.GetPowerStatusByNodeName(name)
 	}
-
+	// VM is managed by vmss
 	vm, err := ss.getVmssVM(name, azcache.CacheReadTypeDefault)
 	if err != nil {
 		return powerState, err
@@ -291,24 +279,19 @@ func (ss *ScaleSet) GetPowerStatusByNodeName(name string) (powerState string, er
 
 // GetProvisioningStateByNodeName returns the provisioningState for the specified node.
 func (ss *ScaleSet) GetProvisioningStateByNodeName(name string) (provisioningState string, err error) {
-	managedByAS, err := ss.isNodeManagedByAvailabilitySet(name, azcache.CacheReadTypeUnsafe)
+	vmManagementType, err := ss.getVMManagementType(name, azcache.CacheReadTypeUnsafe)
 	if err != nil {
-		klog.Errorf("Failed to check isNodeManagedByAvailabilitySet: %v", err)
+		klog.Errorf("Failed to check VM management type: %v", err)
 		return "", err
 	}
-	if managedByAS {
+
+	if vmManagementType == ManagedByAvSet {
 		// vm is managed by availability set.
 		return ss.availabilitySet.GetProvisioningStateByNodeName(name)
 	}
-
-	managedByVmssFlex, err := ss.isNodeManagedByVmssFlex(name, azcache.CacheReadTypeUnsafe)
-	if err != nil {
-		klog.Errorf("Failed to check isNodeManagedByVmssFlex: nodeName %s, error: %v", name, err)
-		return "", err
-	}
-	if managedByVmssFlex {
+	if vmManagementType == ManagedByVmssFlex {
 		// vm is managed by vmss flex.
-		return ss.flexScaleSet.GetProvisioningStateByNodeName(name)
+		ss.flexScaleSet.GetProvisioningStateByNodeName(name)
 	}
 
 	vm, err := ss.getVmssVM(name, azcache.CacheReadTypeDefault)
@@ -386,24 +369,19 @@ func (ss *ScaleSet) getVmssVMByInstanceID(resourceGroup, scaleSetName, instanceI
 // It must return ("", cloudprovider.InstanceNotFound) if the instance does
 // not exist or is no longer running.
 func (ss *ScaleSet) GetInstanceIDByNodeName(name string) (string, error) {
-	managedByAS, err := ss.isNodeManagedByAvailabilitySet(name, azcache.CacheReadTypeUnsafe)
+	vmManagementType, err := ss.getVMManagementType(name, azcache.CacheReadTypeUnsafe)
 	if err != nil {
-		klog.Errorf("Failed to check isNodeManagedByAvailabilitySet: %v", err)
+		klog.Errorf("Failed to check VM management type: %v", err)
 		return "", err
 	}
-	if managedByAS {
+
+	if vmManagementType == ManagedByAvSet {
 		// vm is managed by availability set.
 		return ss.availabilitySet.GetInstanceIDByNodeName(name)
 	}
-
-	managedByVmssFlex, err := ss.isNodeManagedByVmssFlex(name, azcache.CacheReadTypeUnsafe)
-	if err != nil {
-		klog.Errorf("Failed to check isNodeManagedByVmssFlex: nodeName %s, error: %v", name, err)
-		return "", err
-	}
-	if managedByVmssFlex {
+	if vmManagementType == ManagedByVmssFlex {
 		// vm is managed by vmss flex.
-		return ss.flexScaleSet.GetInstanceIDByNodeName(name)
+		ss.flexScaleSet.GetInstanceIDByNodeName(name)
 	}
 
 	vm, err := ss.getVmssVM(name, azcache.CacheReadTypeUnsafe)
@@ -470,24 +448,19 @@ func (ss *ScaleSet) GetNodeNameByProviderID(providerID string) (types.NodeName, 
 
 // GetInstanceTypeByNodeName gets the instance type by node name.
 func (ss *ScaleSet) GetInstanceTypeByNodeName(name string) (string, error) {
-	managedByAS, err := ss.isNodeManagedByAvailabilitySet(name, azcache.CacheReadTypeUnsafe)
+	vmManagementType, err := ss.getVMManagementType(name, azcache.CacheReadTypeUnsafe)
 	if err != nil {
-		klog.Errorf("Failed to check isNodeManagedByAvailabilitySet: %v", err)
+		klog.Errorf("Failed to check VM management type: %v", err)
 		return "", err
 	}
-	if managedByAS {
+
+	if vmManagementType == ManagedByAvSet {
 		// vm is managed by availability set.
 		return ss.availabilitySet.GetInstanceTypeByNodeName(name)
 	}
-
-	managedByVmssFlex, err := ss.isNodeManagedByVmssFlex(name, azcache.CacheReadTypeUnsafe)
-	if err != nil {
-		klog.Errorf("Failed to check isNodeManagedByVmssFlex: nodeName %s, error: %v", name, err)
-		return "", err
-	}
-	if managedByVmssFlex {
+	if vmManagementType == ManagedByVmssFlex {
 		// vm is managed by vmss flex.
-		return ss.flexScaleSet.GetInstanceTypeByNodeName(name)
+		ss.flexScaleSet.GetInstanceTypeByNodeName(name)
 	}
 
 	vm, err := ss.getVmssVM(name, azcache.CacheReadTypeUnsafe)
@@ -508,24 +481,19 @@ func (ss *ScaleSet) GetInstanceTypeByNodeName(name string) (string, error) {
 // GetZoneByNodeName gets availability zone for the specified node. If the node is not running
 // with availability zone, then it returns fault domain.
 func (ss *ScaleSet) GetZoneByNodeName(name string) (cloudprovider.Zone, error) {
-	managedByAS, err := ss.isNodeManagedByAvailabilitySet(name, azcache.CacheReadTypeUnsafe)
+	vmManagementType, err := ss.getVMManagementType(name, azcache.CacheReadTypeUnsafe)
 	if err != nil {
-		klog.Errorf("Failed to check isNodeManagedByAvailabilitySet: %v", err)
+		klog.Errorf("Failed to check VM management type: %v", err)
 		return cloudprovider.Zone{}, err
 	}
-	if managedByAS {
+
+	if vmManagementType == ManagedByAvSet {
 		// vm is managed by availability set.
 		return ss.availabilitySet.GetZoneByNodeName(name)
 	}
-
-	managedByVmssFlex, err := ss.isNodeManagedByVmssFlex(name, azcache.CacheReadTypeUnsafe)
-	if err != nil {
-		klog.Errorf("Failed to check isNodeManagedByVmssFlex: nodeName %s, error: %v", name, err)
-		return cloudprovider.Zone{}, err
-	}
-	if managedByVmssFlex {
+	if vmManagementType == ManagedByVmssFlex {
 		// vm is managed by vmss flex.
-		return ss.flexScaleSet.GetZoneByNodeName(name)
+		ss.flexScaleSet.GetZoneByNodeName(name)
 	}
 
 	vm, err := ss.getVmssVM(name, azcache.CacheReadTypeUnsafe)
@@ -916,24 +884,19 @@ func extractResourceGroupByVMSSNicID(nicID string) (string, error) {
 
 // GetPrimaryInterface gets machine primary network interface by node name and vmSet.
 func (ss *ScaleSet) GetPrimaryInterface(nodeName string) (network.Interface, error) {
-	managedByAS, err := ss.isNodeManagedByAvailabilitySet(nodeName, azcache.CacheReadTypeUnsafe)
+	vmManagementType, err := ss.getVMManagementType(nodeName, azcache.CacheReadTypeUnsafe)
 	if err != nil {
-		klog.Errorf("Failed to check isNodeManagedByAvailabilitySet: %v", err)
+		klog.Errorf("Failed to check VM management type: %v", err)
 		return network.Interface{}, err
 	}
-	if managedByAS {
+
+	if vmManagementType == ManagedByAvSet {
 		// vm is managed by availability set.
 		return ss.availabilitySet.GetPrimaryInterface(nodeName)
 	}
-
-	managedByVmssFlex, err := ss.isNodeManagedByVmssFlex(nodeName, azcache.CacheReadTypeUnsafe)
-	if err != nil {
-		klog.Errorf("Failed to check isNodeManagedByVmssFlex: nodeName %s, error: %v", nodeName, err)
-		return network.Interface{}, err
-	}
-	if managedByVmssFlex {
+	if vmManagementType == ManagedByVmssFlex {
 		// vm is managed by vmss flex.
-		return ss.flexScaleSet.GetPrimaryInterface(nodeName)
+		ss.flexScaleSet.GetPrimaryInterface(nodeName)
 	}
 
 	vm, err := ss.getVmssVM(nodeName, azcache.CacheReadTypeDefault)
@@ -1376,15 +1339,15 @@ func (ss *ScaleSet) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node, bac
 			continue
 		}
 
-		// Check whether the node is VMAS virtual machine.
-		klog.V(2).Infof("Check whether the node is VMAS virtual machine")
-		managedByAS, err := ss.isNodeManagedByAvailabilitySet(localNodeName, azcache.CacheReadTypeDefault)
+		vmManagementType, err := ss.getVMManagementType(localNodeName, azcache.CacheReadTypeDefault)
 		if err != nil {
-			klog.Errorf("Failed to check isNodeManagedByAvailabilitySet(%s): %v", localNodeName, err)
+			klog.Errorf("Failed to check vmManagementType(%s): %v", localNodeName, err)
 			errors = append(errors, err)
 			continue
 		}
-		if managedByAS {
+
+		if vmManagementType == ManagedByAvSet {
+			// vm is managed by availability set.
 			// VMAS nodes should also be added to the SLB backends.
 			if ss.useStandardLoadBalancer() {
 				vmasNodes = append(vmasNodes, node)
@@ -1393,16 +1356,8 @@ func (ss *ScaleSet) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node, bac
 			klog.V(3).Infof("EnsureHostsInPool skips node %s because VMAS nodes couldn't be added to basic LB with VMSS backends", localNodeName)
 			continue
 		}
-
-		klog.V(2).Infof("Check whether the node is vmss flex virtual machine")
-		managedByVmssFlex, err := ss.isNodeManagedByVmssFlex(localNodeName, azcache.CacheReadTypeDefault)
-		if err != nil {
-			klog.Errorf("Failed to check isNodeManagedByVmssFlex: nodeName %s, error: %v", localNodeName, err)
-			errors = append(errors, err)
-			continue
-		}
-		if managedByVmssFlex {
-			// Vmss Flex nodes should also be added to the SLB backends.
+		if vmManagementType == ManagedByVmssFlex {
+			// vm is managed by vmss flex.
 			if ss.useStandardLoadBalancer() {
 				vmssFlexNodes = append(vmssFlexNodes, node)
 				continue
@@ -1935,32 +1890,24 @@ func (ss *ScaleSet) GetAgentPoolVMSetNames(nodes []*v1.Node) (*[]string, error) 
 	vmSetNames := make([]string, 0)
 
 	vmssFlexVMNodes := make([]*v1.Node, 0)
+	avSetVMNodes := make([]*v1.Node, 0)
 
 	for _, node := range nodes {
 		var names *[]string
-		managedByAS, err := ss.isNodeManagedByAvailabilitySet(node.Name, azcache.CacheReadTypeDefault)
+
+		vmManagementType, err := ss.getVMManagementType(node.Name, azcache.CacheReadTypeDefault)
 		if err != nil {
-			return nil, fmt.Errorf("GetAgentPoolVMSetNames: failed to check if the node %s is managed by VMAS: %w", node.Name, err)
-		}
-		if managedByAS {
-			cached, err := ss.availabilitySetNodesCache.Get(consts.AvailabilitySetNodesKey, azcache.CacheReadTypeDefault)
-			if err != nil {
-				return nil, fmt.Errorf("GetAgentPoolVMSetNames: failed to get availabilitySetNodesCache")
-			}
-			vms := cached.(availabilitySetNodeEntry).vms
-			names, err = ss.availabilitySet.(*availabilitySet).getAgentPoolAvailabilitySets(vms, []*v1.Node{node})
-			if err != nil {
-				return nil, fmt.Errorf("GetAgentPoolVMSetNames: failed to execute getAgentPoolAvailabilitySets: %w", err)
-			}
-			vmSetNames = append(vmSetNames, *names...)
-			continue
+			return nil, fmt.Errorf("GetAgentPoolVMSetNames: failed to check the node %s management type: %w", node.Name, err)
 		}
 
-		managedByVmssFlex, err := ss.isNodeManagedByVmssFlex(node.Name, azcache.CacheReadTypeUnsafe)
-		if err != nil {
-			return nil, fmt.Errorf("GetAgentPoolVMSetNames: failed to check if the node %s is managed by VmssFlex: %w", node.Name, err)
+		if vmManagementType == ManagedByAvSet {
+			// vm is managed by vmss flex.
+			klog.V(2).Infof("fount avSet node: %s", node.Name)
+			avSetVMNodes = append(avSetVMNodes, node)
+			continue
 		}
-		if managedByVmssFlex {
+		if vmManagementType == ManagedByVmssFlex {
+			// vm is managed by vmss flex.
 			klog.V(2).Infof("fount vmss flex node: %s", node.Name)
 			vmssFlexVMNodes = append(vmssFlexVMNodes, node)
 			continue
@@ -1973,11 +1920,17 @@ func (ss *ScaleSet) GetAgentPoolVMSetNames(nodes []*v1.Node) (*[]string, error) 
 		vmSetNames = append(vmSetNames, *names...)
 	}
 
-	names, err := ss.flexScaleSet.GetAgentPoolVMSetNames(vmssFlexVMNodes)
+	vmssFlexVMnames, err := ss.flexScaleSet.GetAgentPoolVMSetNames(vmssFlexVMNodes)
 	if err != nil {
-		return nil, fmt.Errorf("ss.flexScaleSet.GetAgentPoolVMSetNames: failed to execute getAgentPoolScaleSets: %w", err)
+		return nil, fmt.Errorf("ss.flexScaleSet.GetAgentPoolVMSetNames: failed to execute : %w", err)
 	}
-	vmSetNames = append(vmSetNames, *names...)
+	vmSetNames = append(vmSetNames, *vmssFlexVMnames...)
+
+	avSetVMnames, err := ss.availabilitySet.GetAgentPoolVMSetNames(avSetVMNodes)
+	if err != nil {
+		return nil, fmt.Errorf("ss.availabilitySet.GetAgentPoolVMSetNames: failed to execute : %w", err)
+	}
+	vmSetNames = append(vmSetNames, *avSetVMnames...)
 
 	return &vmSetNames, nil
 }
@@ -1987,14 +1940,19 @@ func (ss *ScaleSet) GetNodeVMSetName(node *v1.Node) (string, error) {
 	_, vmssName, err := getVmssAndResourceGroupNameByVMProviderID(providerID)
 	if err != nil {
 		klog.Warningf("ss.GetNodeVMSetName: the provider ID %s of node %s does not match the format of a VMSS instance, assuming it is managed by an availability set or vmss flex", providerID, node.Name)
-		managedByVmssFlex, err := ss.isNodeManagedByVmssFlex(node.Name, azcache.CacheReadTypeUnsafe)
+
+		vmManagementType, err := ss.getVMManagementType(node.Name, azcache.CacheReadTypeUnsafe)
 		if err != nil {
-			return "", fmt.Errorf("GetNodeVMSetName: failed to check if the node %s is managed by VmssFlex: %w", node.Name, err)
+			return "", fmt.Errorf("GetNodeVMSetName: failed to check the node %s management type: %w", node.Name, err)
 		}
-		if managedByVmssFlex {
-			return ss.flexScaleSet.GetNodeVMSetName(node)
-		} else {
+
+		if vmManagementType == ManagedByAvSet {
+			// vm is managed by availability set.
 			return ss.availabilitySet.GetNodeVMSetName(node)
+		}
+		if vmManagementType == ManagedByVmssFlex {
+			// vm is managed by vmss flex.
+			return ss.flexScaleSet.GetNodeVMSetName(node)
 		}
 	}
 
