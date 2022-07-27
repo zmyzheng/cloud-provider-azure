@@ -377,15 +377,20 @@ func (ss *ScaleSet) GetInstanceIDByNodeName(name string) (string, error) {
 
 	if vmManagementType == ManagedByAvSet {
 		// vm is managed by availability set.
+		klog.V(2).Infof("ss.GetInstanceIDByNodeName(%s): vm is managed by availability set", name)
 		return ss.availabilitySet.GetInstanceIDByNodeName(name)
 	}
 	if vmManagementType == ManagedByVmssFlex {
 		// vm is managed by vmss flex.
+		klog.V(2).Infof("ss.GetInstanceIDByNodeName(%s): vm is managed by vmss flex", name)
 		return ss.flexScaleSet.GetInstanceIDByNodeName(name)
 	}
-
+	klog.V(2).Infof("ss.GetInstanceIDByNodeName(%s): vm is managed by vmss uniform", name)
 	vm, err := ss.getVmssVM(name, azcache.CacheReadTypeUnsafe)
 	if err != nil {
+		if errors.Is(err, ErrorNotVmssInstance) {
+			return "", cloudprovider.InstanceNotFound
+		}
 		klog.Errorf("Unable to find node %s: %v", name, err)
 		return "", err
 	}
