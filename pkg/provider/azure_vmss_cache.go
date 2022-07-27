@@ -304,6 +304,7 @@ func (ss *ScaleSet) deleteCacheForNode(nodeName string) error {
 
 func (ss *ScaleSet) newAvailabilitySetNodesCache() (*azcache.TimedCache, error) {
 	getter := func(key string) (interface{}, error) {
+		klog.V(2).Infof("calling getter function of vailabilitySetNodesCache with key: %s", key)
 		vmNames := sets.NewString()
 		resourceGroups, err := ss.GetResourceGroups()
 		if err != nil {
@@ -347,6 +348,7 @@ func (ss *ScaleSet) newAvailabilitySetNodesCache() (*azcache.TimedCache, error) 
 
 func (ss *ScaleSet) newVmssFlexNodesCache() (*azcache.TimedCache, error) {
 	getter := func(key string) (interface{}, error) {
+		klog.V(2).Infof("calling getter function of VmssFlexNodesCache with key: %s", key)
 		vmNames := sets.NewString()
 		resourceGroups, err := ss.GetResourceGroups()
 		if err != nil {
@@ -382,16 +384,17 @@ func (ss *ScaleSet) newVmssFlexNodesCache() (*azcache.TimedCache, error) {
 		return localCache, nil
 	}
 
-	if ss.Config.AvailabilitySetNodesCacheTTLInSeconds == 0 {
+	if ss.Config.VmssFlexNodesCacheTTLInSeconds == 0 {
 		ss.Config.VmssFlexNodesCacheTTLInSeconds = consts.VmssFlexNodesCacheTTLDefaultInSeconds
 	}
 	return azcache.NewTimedcache(time.Duration(ss.Config.VmssFlexNodesCacheTTLInSeconds)*time.Second, getter)
 }
 
 func (ss *ScaleSet) isNodeManagedByAvailabilitySet(nodeName string, crt azcache.AzureCacheReadType) (bool, error) {
+	klog.V(2).Infof("calling isNodeManagedByAvailabilitySet(%s)", nodeName)
 	// Assume all nodes are managed by VMSS when DisableAvailabilitySetNodes is enabled.
 	if ss.DisableAvailabilitySetNodes {
-		klog.V(6).Infof("Assuming node %q is managed by VMSS since DisableAvailabilitySetNodes is set to true", nodeName)
+		klog.V(2).Infof("Assuming node %q is managed by VMSS since DisableAvailabilitySetNodes is set to true", nodeName)
 		return false, nil
 	}
 
@@ -403,7 +406,7 @@ func (ss *ScaleSet) isNodeManagedByAvailabilitySet(nodeName string, crt azcache.
 	cachedNodes := cached.(availabilitySetNodeEntry).nodeNames
 	// if the node is not in the cache, assume the node has joined after the last cache refresh and attempt to refresh the cache.
 	if !cachedNodes.Has(nodeName) {
-		klog.V(2).Infof("Node %s has joined the cluster since the last VM cache refresh, refreshing the cache", nodeName)
+		klog.V(2).Infof("Node %s has joined the cluster since the last VM cache refresh in availabilitySetNodeEntry, refreshing the cache", nodeName)
 		cached, err = ss.availabilitySetNodesCache.Get(consts.AvailabilitySetNodesKey, azcache.CacheReadTypeForceRefresh)
 		if err != nil {
 			return false, err
@@ -415,6 +418,7 @@ func (ss *ScaleSet) isNodeManagedByAvailabilitySet(nodeName string, crt azcache.
 }
 
 func (ss *ScaleSet) isNodeManagedByVmssFlex(nodeName string, crt azcache.AzureCacheReadType) (bool, error) {
+	klog.V(2).Infof("calling isNodeManagedByVmssFlex(%s)", nodeName)
 	cached, err := ss.vmssFlexNodesCache.Get(consts.VmssFlexNodesKey, crt)
 	if err != nil {
 		return false, err
@@ -424,7 +428,7 @@ func (ss *ScaleSet) isNodeManagedByVmssFlex(nodeName string, crt azcache.AzureCa
 
 	// if the node is not in the cache, assume the node has joined after the last cache refresh and attempt to refresh the cache.
 	if !cachedNodes.Has(nodeName) {
-		klog.V(2).Infof("Node %s has joined the cluster since the last VM cache refresh, refreshing the cache", nodeName)
+		klog.V(2).Infof("Node %s has joined the cluster since the last VM cache refresh in vmssFlexNodeEntry, refreshing the cache", nodeName)
 		cached, err = ss.vmssFlexNodesCache.Get(consts.VmssFlexNodesKey, azcache.CacheReadTypeForceRefresh)
 		if err != nil {
 			return false, err

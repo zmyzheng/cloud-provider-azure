@@ -219,6 +219,7 @@ func (c *Client) listVM(ctx context.Context, resourceGroupName string) ([]comput
 
 // ListVmssFlexVMsWithoutInstanceView gets a list of VirtualMachine in the VMSS Flex without InstanceView.
 func (c *Client) ListVmssFlexVMsWithoutInstanceView(ctx context.Context, vmssFlexID string) ([]compute.VirtualMachine, *retry.Error) {
+	klog.V(2).Infof("calling ListVmssFlexVMsWithoutInstanceView(%s)", vmssFlexID)
 	mc := metrics.NewMetricContext("vm", "list", "", c.subscriptionID, "")
 
 	// Report errors if the client is rate limited.
@@ -250,6 +251,7 @@ func (c *Client) ListVmssFlexVMsWithoutInstanceView(ctx context.Context, vmssFle
 
 // ListVmssFlexVMsWithOnlyInstanceView gets a list of VirtualMachine in the VMSS Flex with only InstanceView.
 func (c *Client) ListVmssFlexVMsWithOnlyInstanceView(ctx context.Context, vmssFlexID string) ([]compute.VirtualMachine, *retry.Error) {
+	klog.V(2).Infof("calling ListVmssFlexVMsWithOnlyInstanceView(%s)", vmssFlexID)
 	mc := metrics.NewMetricContext("vm", "list", "", c.subscriptionID, "")
 
 	// Report errors if the client is rate limited.
