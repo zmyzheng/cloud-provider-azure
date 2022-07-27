@@ -424,6 +424,30 @@ func (fs *FlexScaleSet) getNodeInfoByIPConfigurationID(ipConfigurationID string)
 	return vmName, strings.ToLower(vmssFlexName), nic, nil
 }
 
+func (fs *FlexScaleSet) getNodeInformationByIPConfigurationID(ipConfigurationID string) (string, string, string, error) {
+	matches := nicIDRE.FindStringSubmatch(ipConfigurationID)
+	if len(matches) != 3 {
+		klog.V(4).Infof("Can not extract nic name from ipConfigurationID (%s)", ipConfigurationID)
+		return "", "", "", fmt.Errorf("invalid ip config ID %s", ipConfigurationID)
+	}
+
+	nicResourceGroup, nicName := matches[1], matches[2]
+	if nicResourceGroup == "" || nicName == "" {
+		return "", "", "", fmt.Errorf("invalid ip config ID %s", ipConfigurationID)
+	}
+
+	vmName := strings.Replace(nicName, "-nic", "", 1)
+
+	vmssFlexName, err := fs.getNodeVmssFlexName(vmName)
+
+	if err != nil {
+		klog.Errorf("Unable to get the vmss flex name by node name %s: %v", vmName, err)
+		return "", "", "", err
+	}
+
+	return vmName, strings.ToLower(vmssFlexName), ipConfigurationID, nil
+}
+
 // ------------------------------------------------------------
 
 // GetNodeCIDRMaskByProviderID returns the node CIDR subnet mask by provider ID.
@@ -931,11 +955,11 @@ func (fs *FlexScaleSet) EnsureBackendPoolDeleted(service *v1.Service, backendPoo
 	}
 
 	vmssFlexNamesMap := make(map[string]bool)
-	vmssFlexVMNameMap := make(map[string]network.Interface)
+	vmssFlexVMNameMap := make(map[string]string)
 	allErrs := make([]error, 0)
 	for i := range ipConfigurationIDs {
 		ipConfigurationID := ipConfigurationIDs[i]
-		nodeName, vmssFlexName, nic, err := fs.getNodeInfoByIPConfigurationID(ipConfigurationID)
+		nodeName, vmssFlexName, nicName, err := fs.getNodeInformationByIPConfigurationID(ipConfigurationID)
 		if err != nil {
 			continue
 		}
@@ -950,11 +974,11 @@ func (fs *FlexScaleSet) EnsureBackendPoolDeleted(service *v1.Service, backendPoo
 		if strings.EqualFold(resourceGroupName, fs.ResourceGroup) {
 			if fs.useStandardLoadBalancer() && !fs.EnableMultipleStandardLoadBalancers {
 				vmssFlexNamesMap[vmssFlexName] = true
-				vmssFlexVMNameMap[nodeName] = nic
+				vmssFlexVMNameMap[nodeName] = nicName
 			} else {
 				if strings.EqualFold(vmssFlexName, vmSetName) {
 					vmssFlexNamesMap[vmSetName] = true
-					vmssFlexVMNameMap[nodeName] = nic
+					vmssFlexVMNameMap[nodeName] = nicName
 				} else {
 					// Only remove nodes belonging to specified vmSet to basic LB backends.
 					continue
@@ -991,13 +1015,21 @@ func (fs *FlexScaleSet) EnsureBackendPoolDeleted(service *v1.Service, backendPoo
 
 }
 
-func (fs *FlexScaleSet) ensureBackendPoolDeletedFromNode(vmssFlexVMNameMap map[string]network.Interface, backendPoolID string) error {
+func (fs *FlexScaleSet) ensureBackendPoolDeletedFromNode(vmssFlexVMNameMap map[string]string, backendPoolID string) error {
 	nicUpdaters := make([]func() error, 0)
 	allErrs := make([]error, 0)
 	i := 0
-	for nodeName, nic := range vmssFlexVMNameMap {
+	for nodeName, nicName := range vmssFlexVMNameMap {
 		i++
 		klog.V(2).Infof("i = %s", i)
+
+		ctx, cancel := getContextWithCancel()
+		defer cancel()
+		nic, rerr := fs.InterfacesClient.Get(ctx, fs.ResourceGroup, nicName, "")
+		if rerr != nil {
+			return fmt.Errorf("ensureBackendPoolDeletedFromNode: failed to get interface of name %s: %w", nicName, rerr.Error())
+		}
+
 		if nic.ProvisioningState == consts.NicFailedState {
 			klog.Warningf("EnsureBackendPoolDeleted skips node %s because its primary nic %s is in Failed state", nodeName, *nic.Name)
 			continue
