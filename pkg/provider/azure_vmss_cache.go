@@ -53,18 +53,6 @@ type vmssEntry struct {
 	lastUpdate    time.Time
 }
 
-type availabilitySetNodeEntry struct {
-	vmNames   sets.String
-	nodeNames sets.String
-	vms       []compute.VirtualMachine
-}
-
-type vmssFlexNodeEntry struct {
-	vmNames   sets.String
-	nodeNames sets.String
-	vms       []compute.VirtualMachine
-}
-
 type nonVmssUniformNodesEntry struct {
 	vmssFlexVMNames  sets.String
 	avSetVMNames     sets.String
@@ -371,6 +359,8 @@ func (ss *ScaleSet) newNonVmssUniformNodesCache() (*azcache.TimedCache, error) {
 }
 
 func (ss *ScaleSet) getVMManagementType(nodeName string, crt azcache.AzureCacheReadType) (VMManagementType, error) {
+	ss.lockMap.LockEntry("getVMManagementType")
+	defer ss.lockMap.UnlockEntry("getVMManagementType")
 	klog.V(2).Infof("calling getVMManagementType(%s)", nodeName)
 	cached, err := ss.nonVmssUniformNodesCache.Get(consts.NonVmssUniformNodesKey, crt)
 	if err != nil {
