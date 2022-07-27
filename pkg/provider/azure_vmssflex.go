@@ -17,7 +17,6 @@ limitations under the License.
 package provider
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -394,7 +393,9 @@ func (fs *FlexScaleSet) getNodeInfoByIPConfigurationID(ipConfigurationID string)
 	if nicResourceGroup == "" || nicName == "" {
 		return "", "", network.Interface{}, fmt.Errorf("invalid ip config ID %s", ipConfigurationID)
 	}
-	nic, rerr := fs.InterfacesClient.Get(context.Background(), nicResourceGroup, nicName, "")
+	ctx, cancel := getContextWithCancel()
+	defer cancel()
+	nic, rerr := fs.InterfacesClient.Get(ctx, nicResourceGroup, nicName, "")
 	if rerr != nil {
 		return "", "", network.Interface{}, fmt.Errorf("GetNodeNameByIPConfigurationID(%s): failed to get interface of name %s: %w", ipConfigurationID, nicName, rerr.Error())
 	}
