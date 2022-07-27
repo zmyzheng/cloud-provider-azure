@@ -381,7 +381,7 @@ func (ss *ScaleSet) GetInstanceIDByNodeName(name string) (string, error) {
 	}
 	if vmManagementType == ManagedByVmssFlex {
 		// vm is managed by vmss flex.
-		ss.flexScaleSet.GetInstanceIDByNodeName(name)
+		return ss.flexScaleSet.GetInstanceIDByNodeName(name)
 	}
 
 	vm, err := ss.getVmssVM(name, azcache.CacheReadTypeUnsafe)
