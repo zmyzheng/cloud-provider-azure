@@ -221,6 +221,14 @@ type Config struct {
 	VmssCacheTTLInSeconds int `json:"vmssCacheTTLInSeconds,omitempty" yaml:"vmssCacheTTLInSeconds,omitempty"`
 	// VmssVirtualMachinesCacheTTLInSeconds sets the cache TTL for vmssVirtualMachines
 	VmssVirtualMachinesCacheTTLInSeconds int `json:"vmssVirtualMachinesCacheTTLInSeconds,omitempty" yaml:"vmssVirtualMachinesCacheTTLInSeconds,omitempty"`
+
+	// VmssFlexCacheTTLDefaultInSeconds sets the cache TTL for VMSS Flex
+	VmssFlexCacheTTLDefaultInSeconds int `json:"VmssFlexCacheTTLDefaultInSeconds,omitempty" yaml:"VmssFlexCacheTTLDefaultInSeconds,omitempty"`
+	// VmssFlexVMCacheTTLInSeconds sets the cache TTL for vmss flex vms
+	VmssFlexVMCacheTTLInSeconds int `json:"VmssFlexVMCacheTTLInSeconds,omitempty" yaml:"VmssFlexVMCacheTTLInSeconds,omitempty"`
+	// VmssFlexVMStatusCacheTTLInSeconds sets the cache TTL for vmss flex vm status
+	VmssFlexVMStatusCacheTTLInSeconds int `json:"VmssFlexVMStatusCacheTTLInSeconds,omitempty" yaml:"VmssFlexVMStatusCacheTTLInSeconds,omitempty"`
+
 	// VmCacheTTLInSeconds sets the cache TTL for vm
 	VMCacheTTLInSeconds int `json:"vmCacheTTLInSeconds,omitempty" yaml:"vmCacheTTLInSeconds,omitempty"`
 	// LoadBalancerCacheTTLInSeconds sets the cache TTL for load balancer
