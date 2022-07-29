@@ -59,7 +59,7 @@ type FlexScaleSet struct {
 func newFlexScaleSet(az *Cloud) (VMSet, error) {
 	fs := &FlexScaleSet{
 		Cloud:                  az,
-		vmssFlexVMnameToVmssID: &sync.Map{},
+		vmssFlexVMNameToVmssID: &sync.Map{},
 		lockMap:                newLockMap(),
 	}
 
@@ -808,10 +808,6 @@ func (fs *FlexScaleSet) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node,
 			continue
 		}
 
-		defer func() {
-			_ = fs.deleteCacheForNode(localNodeName)
-		}()
-
 		f := func() error {
 			_, _, _, _, err := fs.EnsureHostInPool(service, types.NodeName(localNodeName), backendPoolID, vmSetNameOfLB)
 			if err != nil {
@@ -1055,9 +1051,7 @@ func (fs *FlexScaleSet) ensureBackendPoolDeletedFromNode(vmssFlexVMNameMap map[s
 				}
 			}
 			nic.IPConfigurations = &newIPConfigs
-			defer func() {
-				_ = fs.deleteCacheForNode(nodeName)
-			}()
+
 			nicUpdaters = append(nicUpdaters, func() error {
 				ctx, cancel := getContextWithCancel()
 				defer cancel()
