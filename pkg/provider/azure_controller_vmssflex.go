@@ -93,10 +93,6 @@ func (fs *FlexScaleSet) AttachDisk(ctx context.Context, nodeName types.NodeName,
 		},
 	}
 	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - attach disk list(%s)", nodeResourceGroup, vmName, diskMap)
-	// Invalidate the cache right after updating
-	defer func() {
-		_ = fs.deleteCacheForNode(vmName)
-	}()
 
 	future, rerr := fs.VirtualMachinesClient.UpdateAsync(ctx, nodeResourceGroup, vmName, newVM, "attach_disk")
 	if rerr != nil {
@@ -173,10 +169,6 @@ func (fs *FlexScaleSet) DetachDisk(ctx context.Context, nodeName types.NodeName,
 		},
 	}
 	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - detach disk list(%s)", nodeResourceGroup, vmName, nodeName, diskMap)
-	// Invalidate the cache right after updating
-	defer func() {
-		_ = fs.deleteCacheForNode(vmName)
-	}()
 
 	rerr := fs.VirtualMachinesClient.Update(ctx, nodeResourceGroup, vmName, newVM, "detach_disk")
 	if rerr != nil {
@@ -212,12 +204,6 @@ func (fs *FlexScaleSet) UpdateVM(ctx context.Context, nodeName types.NodeName) e
 		return err
 	}
 	klog.V(2).Infof("azureDisk - update(%s): vm(%s)", nodeResourceGroup, vmName)
-	// Invalidate the cache right after updating
-	defer func() {
-
-		_ = fs.deleteCacheForNode(vmName)
-
-	}()
 
 	rerr := fs.VirtualMachinesClient.Update(ctx, nodeResourceGroup, vmName, compute.VirtualMachineUpdate{}, "update_vm")
 	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - returned with %v", nodeResourceGroup, vmName, rerr)

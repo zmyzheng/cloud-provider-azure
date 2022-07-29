@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Kubernetes Authors.
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ import (
 )
 
 var (
-	// ErrorNotVmssID indicates the id is not a valid vmss id.
+	// ErrorVmssIDIsEmpty indicates the vmss id is empty.
 	ErrorVmssIDIsEmpty = errors.New("VMSS ID is empty")
 )
 
@@ -48,7 +48,7 @@ type FlexScaleSet struct {
 
 	vmssFlexCache *azcache.TimedCache
 
-	vmssFlexVMnameToVmssID *sync.Map
+	vmssFlexVMNameToVmssID *sync.Map
 	vmssFlexVMCache        *azcache.TimedCache
 	vmssFlexVMStatusCache  *azcache.TimedCache
 
