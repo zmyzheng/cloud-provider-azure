@@ -251,7 +251,7 @@ func (ss *ScaleSet) GetPowerStatusByNodeName(name string) (powerState string, er
 	}
 	if vmManagementType == ManagedByVmssFlex {
 		// vm is managed by vmss flex.
-		ss.flexScaleSet.GetPowerStatusByNodeName(name)
+		return ss.flexScaleSet.GetPowerStatusByNodeName(name)
 	}
 	// VM is managed by vmss
 	vm, err := ss.getVmssVM(name, azcache.CacheReadTypeDefault)
@@ -291,7 +291,7 @@ func (ss *ScaleSet) GetProvisioningStateByNodeName(name string) (provisioningSta
 	}
 	if vmManagementType == ManagedByVmssFlex {
 		// vm is managed by vmss flex.
-		ss.flexScaleSet.GetProvisioningStateByNodeName(name)
+		return ss.flexScaleSet.GetProvisioningStateByNodeName(name)
 	}
 
 	vm, err := ss.getVmssVM(name, azcache.CacheReadTypeDefault)
@@ -412,6 +412,7 @@ func (ss *ScaleSet) GetInstanceIDByNodeName(name string) (string, error) {
 //	    /subscriptions/subsid/resourceGroups/rg/providers/Microsoft.Compute/virtualMachineScaleSets/aks-agentpool-22126781-vmss/virtualMachines/k8s-agentpool-36841236-vmss_1
 func (ss *ScaleSet) GetNodeNameByProviderID(providerID string) (types.NodeName, error) {
 	// NodeName is not part of providerID for vmss instances.
+	klog.V(2).Infof("calling GetNodeNameByProviderID...")
 	scaleSetName, err := extractScaleSetNameByProviderID(providerID)
 	if err != nil {
 		klog.V(2).Infof("Can not extract scale set name from providerID (%s), assuming it is managed by availability set: %v", providerID, err)
@@ -465,7 +466,7 @@ func (ss *ScaleSet) GetInstanceTypeByNodeName(name string) (string, error) {
 	}
 	if vmManagementType == ManagedByVmssFlex {
 		// vm is managed by vmss flex.
-		ss.flexScaleSet.GetInstanceTypeByNodeName(name)
+		return ss.flexScaleSet.GetInstanceTypeByNodeName(name)
 	}
 
 	vm, err := ss.getVmssVM(name, azcache.CacheReadTypeUnsafe)
@@ -498,7 +499,7 @@ func (ss *ScaleSet) GetZoneByNodeName(name string) (cloudprovider.Zone, error) {
 	}
 	if vmManagementType == ManagedByVmssFlex {
 		// vm is managed by vmss flex.
-		ss.flexScaleSet.GetZoneByNodeName(name)
+		return ss.flexScaleSet.GetZoneByNodeName(name)
 	}
 
 	vm, err := ss.getVmssVM(name, azcache.CacheReadTypeUnsafe)
@@ -901,7 +902,7 @@ func (ss *ScaleSet) GetPrimaryInterface(nodeName string) (network.Interface, err
 	}
 	if vmManagementType == ManagedByVmssFlex {
 		// vm is managed by vmss flex.
-		ss.flexScaleSet.GetPrimaryInterface(nodeName)
+		return ss.flexScaleSet.GetPrimaryInterface(nodeName)
 	}
 
 	vm, err := ss.getVmssVM(nodeName, azcache.CacheReadTypeDefault)
