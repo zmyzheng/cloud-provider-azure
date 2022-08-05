@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Kubernetes Authors.
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ import (
 // AttachDisk attaches a disk to vm
 func (fs *FlexScaleSet) AttachDisk(ctx context.Context, nodeName types.NodeName, diskMap map[string]*AttachDiskOptions) (*azure.Future, error) {
 	vmName := mapNodeNameToVMName(nodeName)
-	vm, err := fs.getVmssFlexVMWithoutInstanceView(vmName, azcache.CacheReadTypeDefault)
+	vm, err := fs.getVmssFlexVM(vmName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +116,7 @@ func (fs *FlexScaleSet) AttachDisk(ctx context.Context, nodeName types.NodeName,
 func (fs *FlexScaleSet) DetachDisk(ctx context.Context, nodeName types.NodeName, diskMap map[string]string) error {
 
 	vmName := mapNodeNameToVMName(nodeName)
-	vm, err := fs.getVmssFlexVMWithoutInstanceView(vmName, azcache.CacheReadTypeDefault)
+	vm, err := fs.getVmssFlexVM(vmName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		// if host doesn't exist, no need to detach
 		klog.Warningf("azureDisk - cannot find node %s, skip detaching disk list(%s)", nodeName, diskMap)
@@ -215,7 +215,7 @@ func (fs *FlexScaleSet) UpdateVM(ctx context.Context, nodeName types.NodeName) e
 
 // GetDataDisks gets a list of data disks attached to the node.
 func (fs *FlexScaleSet) GetDataDisks(nodeName types.NodeName, crt azcache.AzureCacheReadType) ([]compute.DataDisk, *string, error) {
-	vm, err := fs.getVmssFlexVMWithoutInstanceView(string(nodeName), crt)
+	vm, err := fs.getVmssFlexVM(string(nodeName), crt)
 	if err != nil {
 		return nil, nil, err
 	}

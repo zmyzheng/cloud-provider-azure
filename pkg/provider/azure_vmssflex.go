@@ -50,7 +50,6 @@ type FlexScaleSet struct {
 
 	vmssFlexVMNameToVmssID *sync.Map
 	vmssFlexVMCache        *azcache.TimedCache
-	vmssFlexVMStatusCache  *azcache.TimedCache
 
 	// lockMap in cache refresh
 	lockMap *lockMap
@@ -69,10 +68,6 @@ func newFlexScaleSet(az *Cloud) (VMSet, error) {
 		return nil, err
 	}
 	fs.vmssFlexVMCache, err = fs.newVmssFlexVMCache()
-	if err != nil {
-		return nil, err
-	}
-	fs.vmssFlexVMStatusCache, err = fs.newVmssFlexVMStatusCache()
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +174,7 @@ func (fs *FlexScaleSet) GetVMSetNames(service *v1.Service, nodes []*v1.Node) (*[
 // It must return ("", cloudprovider.InstanceNotFound) if the instance does
 // not exist or is no longer running.
 func (fs *FlexScaleSet) GetInstanceIDByNodeName(name string) (string, error) {
-	machine, err := fs.getVmssFlexVMWithoutInstanceView(name, azcache.CacheReadTypeUnsafe)
+	machine, err := fs.getVmssFlexVM(name, azcache.CacheReadTypeUnsafe)
 	if err != nil {
 		return "", err
 	}
@@ -195,7 +190,7 @@ func (fs *FlexScaleSet) GetInstanceIDByNodeName(name string) (string, error) {
 
 // GetInstanceTypeByNodeName gets the instance type by node name.
 func (fs *FlexScaleSet) GetInstanceTypeByNodeName(name string) (string, error) {
-	machine, err := fs.getVmssFlexVMWithoutInstanceView(name, azcache.CacheReadTypeUnsafe)
+	machine, err := fs.getVmssFlexVM(name, azcache.CacheReadTypeUnsafe)
 	if err != nil {
 		klog.Errorf("fs.GetInstanceTypeByNodeName(%s) failed: fs.getVmssFlexVMWithoutInstanceView(%s) err=%v", name, name, err)
 		return "", err
@@ -211,7 +206,7 @@ func (fs *FlexScaleSet) GetInstanceTypeByNodeName(name string) (string, error) {
 // with availability zone, then it returns fault domain.
 // for details, refer to https://kubernetes-sigs.github.io/cloud-provider-azure/topics/availability-zones/#node-labels
 func (fs *FlexScaleSet) GetZoneByNodeName(name string) (cloudprovider.Zone, error) {
-	vm, err := fs.getVmssFlexVMWithoutInstanceView(name, azcache.CacheReadTypeUnsafe)
+	vm, err := fs.getVmssFlexVM(name, azcache.CacheReadTypeUnsafe)
 	if err != nil {
 		klog.Errorf("fs.GetZoneByNodeName(%s) failed: fs.getVmssFlexVMWithoutInstanceView(%s) err=%v", name, name, err)
 		return cloudprovider.Zone{}, err
@@ -245,7 +240,7 @@ func (fs *FlexScaleSet) GetZoneByNodeName(name string) (cloudprovider.Zone, erro
 
 // GetProvisioningStateByNodeName returns the provisioningState for the specified node.
 func (fs *FlexScaleSet) GetProvisioningStateByNodeName(name string) (provisioningState string, err error) {
-	vm, err := fs.getVmssFlexVMWithoutInstanceView(name, azcache.CacheReadTypeDefault)
+	vm, err := fs.getVmssFlexVM(name, azcache.CacheReadTypeDefault)
 	if err != nil {
 		return provisioningState, err
 	}
@@ -259,7 +254,7 @@ func (fs *FlexScaleSet) GetProvisioningStateByNodeName(name string) (provisionin
 
 // GetPowerStatusByNodeName returns the powerState for the specified node.
 func (fs *FlexScaleSet) GetPowerStatusByNodeName(name string) (powerState string, err error) {
-	vm, err := fs.getVmssFlexVMStatus(name, azcache.CacheReadTypeDefault)
+	vm, err := fs.getVmssFlexVM(name, azcache.CacheReadTypeDefault)
 	if err != nil {
 		return powerState, err
 	}
@@ -282,7 +277,7 @@ func (fs *FlexScaleSet) GetPowerStatusByNodeName(name string) (powerState string
 // GetPrimaryInterface gets machine primary network interface by node name.
 func (fs *FlexScaleSet) GetPrimaryInterface(nodeName string) (network.Interface, error) {
 	klog.V(2).Infof("go into fs.GetPrimaryInterface(%s)", nodeName)
-	machine, err := fs.getVmssFlexVMWithoutInstanceView(nodeName, azcache.CacheReadTypeDefault)
+	machine, err := fs.getVmssFlexVM(nodeName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		klog.Errorf("fs.GetInstanceTypeByNodeName(%s) failed: fs.getVmssFlexVMWithoutInstanceView(%s) err=%v", nodeName, nodeName, err)
 		return network.Interface{}, err

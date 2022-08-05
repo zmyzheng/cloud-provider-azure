@@ -19,7 +19,7 @@ package consts
 import (
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2021-02-01/storage"
+	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2021-09-01/storage"
 )
 
 const (
@@ -140,10 +140,17 @@ const (
 
 	// NonVmssUniformNodesKey is the key when querying nonVmssUniformNodes cache
 	NonVmssUniformNodesKey = "k8sNonVmssUniformNodesKey"
+	// AvailabilitySetNodesKey is the availability set nodes key
+	AvailabilitySetNodesKey = "k8sAvailabilitySetNodesKey"
 
 	// VmssFlexKey is the key when querying vmssFlexVM cache
 	VmssFlexKey = "k8sVmssFlexKey"
 
+	// GetNodeVmssFlexIDLockKey is the key for getting the lock for getNodeVmssFlexID function
+	GetNodeVmssFlexIDLockKey = "k8sGetNodeVmssFlexIDLockKey"
+
+	// AvailabilitySetNodesCacheTTLDefaultInSeconds is the TTL of the availabilitySet node cache
+	AvailabilitySetNodesCacheTTLDefaultInSeconds = 900
 	// VMSSCacheTTLDefaultInSeconds is the TTL of the vmss cache
 	VMSSCacheTTLDefaultInSeconds = 600
 	// VMSSVirtualMachinesCacheTTLDefaultInSeconds is the TTL of the vmss vm cache

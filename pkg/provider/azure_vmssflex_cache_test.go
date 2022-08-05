@@ -83,11 +83,29 @@ var (
 	}
 	testVMListWithOnlyInstanceView = []compute.VirtualMachine{testVMWithOnlyInstanceView1, testVMWithOnlyInstanceView2}
 
+	testVM1 = compute.VirtualMachine{
+		Name: to.StringPtr("testvm1"),
+		VirtualMachineProperties: &compute.VirtualMachineProperties{
+			ProvisioningState: nil,
+			VirtualMachineScaleSet: &compute.SubResource{
+				ID: to.StringPtr("subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachineScaleSets/vmssflex1"),
+			},
+			InstanceView: &compute.VirtualMachineInstanceView{
+				Statuses: &[]compute.InstanceViewStatus{
+					{
+						Code: to.StringPtr("PowerState/running"),
+					},
+				},
+			},
+		},
+	}
+
 	testVmssFlex1 = compute.VirtualMachineScaleSet{
 		ID:   to.StringPtr("subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachineScaleSets/vmssflex1"),
 		Name: to.StringPtr("vmssflex1"),
 		VirtualMachineScaleSetProperties: &compute.VirtualMachineScaleSetProperties{
 			VirtualMachineProfile: &compute.VirtualMachineScaleSetVMProfile{},
+			OrchestrationMode:     compute.OrchestrationModeFlexible,
 		},
 	}
 
@@ -96,6 +114,7 @@ var (
 		Name: to.StringPtr("vmssflex2"),
 		VirtualMachineScaleSetProperties: &compute.VirtualMachineScaleSetProperties{
 			VirtualMachineProfile: &compute.VirtualMachineScaleSetVMProfile{},
+			OrchestrationMode:     compute.OrchestrationModeFlexible,
 		},
 	}
 
@@ -157,7 +176,7 @@ func TestGetNodeVmssFlexID(t *testing.T) {
 	}
 }
 
-func TestGetVmssFlexVMWithoutInstanceView(t *testing.T) {
+func TestGetVmssFlexVM(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	testCases := []struct {
@@ -172,18 +191,18 @@ func TestGetVmssFlexVMWithoutInstanceView(t *testing.T) {
 		expectedErr                    error
 	}{
 		{
-			description:                    "getVmssFlexVMWithoutInstanceView should return the VmssFlex VM without InstanceView",
+			description:                    "getVmssFlexVM should return the VmssFlex VM",
 			nodeName:                       "testvm1",
 			testVM:                         testVMWithoutInstanceView1,
 			vmGetErr:                       nil,
 			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
 			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
 			vmListErr:                      nil,
-			expectedVmssFlexVM:             testVMWithoutInstanceView1,
+			expectedVmssFlexVM:             testVM1,
 			expectedErr:                    nil,
 		},
 		{
-			description:                    "getVmssFlexVMWithoutInstanceView should throw InstanceNotFound error if the VM cannot be found",
+			description:                    "getVmssFlexVM should throw InstanceNotFound error if the VM cannot be found",
 			nodeName:                       "testvm1",
 			testVM:                         compute.VirtualMachine{},
 			vmGetErr:                       &retry.Error{HTTPStatusCode: http.StatusNotFound},
@@ -194,7 +213,7 @@ func TestGetVmssFlexVMWithoutInstanceView(t *testing.T) {
 			expectedErr:                    cloudprovider.InstanceNotFound,
 		},
 		{
-			description:                    "getVmssFlexVMWithoutInstanceView should throw InstanceNotFound error if the VM is removed from VMSS Flex",
+			description:                    "getVmssFlexVM should throw InstanceNotFound error if the VM is removed from VMSS Flex",
 			nodeName:                       "testvm1",
 			testVM:                         testVMWithoutInstanceView1,
 			vmGetErr:                       nil,
@@ -215,72 +234,7 @@ func TestGetVmssFlexVMWithoutInstanceView(t *testing.T) {
 		mockVMClient.EXPECT().ListVmssFlexVMsWithoutInstanceView(gomock.Any(), gomock.Any()).Return(tc.testVMListWithoutInstanceView, tc.vmListErr).AnyTimes()
 		mockVMClient.EXPECT().ListVmssFlexVMsWithOnlyInstanceView(gomock.Any(), gomock.Any()).Return(tc.testVMListWithOnlyInstanceView, tc.vmListErr).AnyTimes()
 
-		vmssFlexVM, err := fs.getVmssFlexVMWithoutInstanceView(tc.nodeName, azcache.CacheReadTypeDefault)
-		assert.Equal(t, tc.expectedErr, err, tc.description)
-		assert.Equal(t, tc.expectedVmssFlexVM, vmssFlexVM, tc.description)
-	}
-
-}
-
-func TestGetVmssFlexVMWithOnlyInstanceView(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	testCases := []struct {
-		description                    string
-		nodeName                       string
-		testVM                         compute.VirtualMachine
-		vmGetErr                       *retry.Error
-		testVMListWithoutInstanceView  []compute.VirtualMachine
-		testVMListWithOnlyInstanceView []compute.VirtualMachine
-		vmListErr                      error
-		expectedVmssFlexVM             compute.VirtualMachine
-		expectedErr                    error
-	}{
-		{
-			description:                    "getVmssFlexVMWithOnlyInstanceView should return the VmssFlex VM with only InstanceView",
-			nodeName:                       "testvm1",
-			testVM:                         testVMWithoutInstanceView1,
-			vmGetErr:                       nil,
-			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
-			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
-			vmListErr:                      nil,
-			expectedVmssFlexVM:             testVMWithOnlyInstanceView1,
-			expectedErr:                    nil,
-		},
-		{
-			description:                    "getVmssFlexVMWithOnlyInstanceView should throw InstanceNotFound error if the VM cannot be found",
-			nodeName:                       "testvm1",
-			testVM:                         compute.VirtualMachine{},
-			vmGetErr:                       &retry.Error{HTTPStatusCode: http.StatusNotFound},
-			testVMListWithoutInstanceView:  []compute.VirtualMachine{},
-			testVMListWithOnlyInstanceView: []compute.VirtualMachine{},
-			vmListErr:                      nil,
-			expectedVmssFlexVM:             compute.VirtualMachine{},
-			expectedErr:                    cloudprovider.InstanceNotFound,
-		},
-		{
-			description:                    "getVmssFlexVMWithOnlyInstanceView should throw InstanceNotFound error if the VM is removed from VMSS Flex",
-			nodeName:                       "testvm1",
-			testVM:                         testVMWithoutInstanceView1,
-			vmGetErr:                       nil,
-			testVMListWithoutInstanceView:  []compute.VirtualMachine{testVMWithoutInstanceView2},
-			testVMListWithOnlyInstanceView: []compute.VirtualMachine{testVMWithOnlyInstanceView2},
-			vmListErr:                      nil,
-			expectedVmssFlexVM:             compute.VirtualMachine{},
-			expectedErr:                    cloudprovider.InstanceNotFound,
-		},
-	}
-
-	for _, tc := range testCases {
-		fs, err := NewTestFlexScaleSet(ctrl)
-		assert.NoError(t, err, "unexpected error when creating test FlexScaleSet")
-
-		mockVMClient := fs.VirtualMachinesClient.(*mockvmclient.MockInterface)
-		mockVMClient.EXPECT().Get(gomock.Any(), fs.ResourceGroup, tc.nodeName, gomock.Any()).Return(tc.testVM, tc.vmGetErr).AnyTimes()
-		mockVMClient.EXPECT().ListVmssFlexVMsWithoutInstanceView(gomock.Any(), gomock.Any()).Return(tc.testVMListWithoutInstanceView, tc.vmListErr).AnyTimes()
-		mockVMClient.EXPECT().ListVmssFlexVMsWithOnlyInstanceView(gomock.Any(), gomock.Any()).Return(tc.testVMListWithOnlyInstanceView, tc.vmListErr).AnyTimes()
-
-		vmssFlexVM, err := fs.getVmssFlexVMStatus(tc.nodeName, azcache.CacheReadTypeDefault)
+		vmssFlexVM, err := fs.getVmssFlexVM(tc.nodeName, azcache.CacheReadTypeDefault)
 		assert.Equal(t, tc.expectedErr, err, tc.description)
 		assert.Equal(t, tc.expectedVmssFlexVM, vmssFlexVM, tc.description)
 	}

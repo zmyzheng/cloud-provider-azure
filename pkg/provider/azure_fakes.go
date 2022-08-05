@@ -67,7 +67,7 @@ func NewTestFlexScaleSet(ctrl *gomock.Controller) (*FlexScaleSet, error) {
 		return nil, err
 	}
 
-	return fs.(*FlexScaleSet), nil // TODO: change this to fs.(*FlexScaleSet) after VMSet is implemented in the next PR
+	return fs.(*FlexScaleSet), nil
 }
 
 // GetTestCloud returns a fake azure cloud for unit tests in Azure related CSI drivers
