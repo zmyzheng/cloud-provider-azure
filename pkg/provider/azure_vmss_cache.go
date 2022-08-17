@@ -329,11 +329,11 @@ func (ss *ScaleSet) newNonVmssUniformNodesCache() (*azcache.TimedCache, error) {
 				return nil, fmt.Errorf("getter function of onVmssUniformNodesCache: failed to list vms in the resource group %s: %w", resourceGroup, err)
 			}
 			for _, vm := range vms {
-				if vm.Name != nil {
+				if vm.OsProfile != nil && vm.OsProfile.ComputerName != nil {
 					if vm.VirtualMachineScaleSet != nil {
-						vmssFlexVMNames.Insert(to.String(vm.Name))
+						vmssFlexVMNames.Insert(strings.ToLower(to.String(vm.OsProfile.ComputerName)))
 					} else {
-						avSetVMNames.Insert(to.String(vm.Name))
+						avSetVMNames.Insert(strings.ToLower(to.String(vm.OsProfile.ComputerName)))
 					}
 				}
 			}

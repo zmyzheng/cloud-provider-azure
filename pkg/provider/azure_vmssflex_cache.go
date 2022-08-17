@@ -91,9 +91,9 @@ func (fs *FlexScaleSet) newVmssFlexVMCache() (*azcache.TimedCache, error) {
 		for i := range vms {
 			vm := vms[i]
 			if vm.OsProfile != nil && vm.OsProfile.ComputerName != nil {
-				localCache.Store(*vm.OsProfile.ComputerName, &vm)
-				fs.vmssFlexVMNameToVmssID.Store(*vm.OsProfile.ComputerName, key)
-				fs.vmssFlexVMNameToNodeName.Store(*vm.Name, *vm.OsProfile.ComputerName)
+				localCache.Store(strings.ToLower(*vm.OsProfile.ComputerName), &vm)
+				fs.vmssFlexVMNameToVmssID.Store(strings.ToLower(*vm.OsProfile.ComputerName), key)
+				fs.vmssFlexVMNameToNodeName.Store(*vm.Name, strings.ToLower(*vm.OsProfile.ComputerName))
 			}
 		}
 
@@ -106,7 +106,7 @@ func (fs *FlexScaleSet) newVmssFlexVMCache() (*azcache.TimedCache, error) {
 		for i := range vms {
 			vm := vms[i]
 			if vm.OsProfile != nil && vm.OsProfile.ComputerName != nil {
-				cached, ok := localCache.Load(*vm.OsProfile.ComputerName)
+				cached, ok := localCache.Load(strings.ToLower(*vm.OsProfile.ComputerName))
 				if ok {
 					cachedVM := cached.(*compute.VirtualMachine)
 					cachedVM.VirtualMachineProperties.InstanceView = vm.VirtualMachineProperties.InstanceView
