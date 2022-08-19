@@ -123,6 +123,45 @@ func (fs *FlexScaleSet) newVmssFlexVMCache() (*azcache.TimedCache, error) {
 	return azcache.NewTimedcache(time.Duration(fs.Config.VmssFlexVMCacheTTLInSeconds)*time.Second, getter)
 }
 
+func (fs *FlexScaleSet) getNodeNameByVMName(vmName string) (string, error) {
+	fs.lockMap.LockEntry(consts.GetNodeVmssFlexIDLockKey)
+	defer fs.lockMap.UnlockEntry(consts.GetNodeVmssFlexIDLockKey)
+	cachedNodeName, isCached := fs.vmssFlexVMNameToNodeName.Load(vmName)
+	if isCached {
+		return fmt.Sprintf("%v", cachedNodeName), nil
+	}
+
+	getter := func(vmName string, crt azcache.AzureCacheReadType) (string, error) {
+		cached, err := fs.vmssFlexCache.Get(consts.VmssFlexKey, crt)
+		if err != nil {
+			return "", err
+		}
+		vmssFlexes := cached.(*sync.Map)
+
+		vmssFlexes.Range(func(key, value interface{}) bool {
+			vmssFlexID := key.(string)
+			_, err := fs.vmssFlexVMCache.Get(vmssFlexID, azcache.CacheReadTypeForceRefresh)
+			if err != nil {
+				klog.V(12).Infof("failed to refresh vmss flex VM cache for vmssFlexID %s", vmssFlexID)
+			}
+			return true
+		})
+
+		cachedNodeName, isCached = fs.vmssFlexVMNameToNodeName.Load(vmName)
+		if isCached {
+			return fmt.Sprintf("%v", cachedNodeName), nil
+		}
+		return "", cloudprovider.InstanceNotFound
+	}
+
+	nodeName, err := getter(vmName, azcache.CacheReadTypeDefault)
+	if err == cloudprovider.InstanceNotFound {
+		return getter(vmName, azcache.CacheReadTypeForceRefresh)
+	}
+	return nodeName, err
+
+}
+
 func (fs *FlexScaleSet) getNodeVmssFlexID(nodeName string) (string, error) {
 	fs.lockMap.LockEntry(consts.GetNodeVmssFlexIDLockKey)
 	defer fs.lockMap.UnlockEntry(consts.GetNodeVmssFlexIDLockKey)
