@@ -44,7 +44,7 @@ var (
 			OsProfile: &compute.OSProfile{
 				ComputerName: to.StringPtr("vmssflex1000001"),
 			},
-			ProvisioningState: nil,
+			ProvisioningState: to.StringPtr("Succeeded"),
 			VirtualMachineScaleSet: &compute.SubResource{
 				ID: to.StringPtr(testVmssFlex1ID),
 			},
@@ -69,6 +69,8 @@ var (
 				VMSize: compute.VirtualMachineSizeTypesStandardD2sV3,
 			},
 		},
+		Zones:    &[]string{"1", "2", "3"},
+		Location: to.StringPtr("EastUS"),
 	}
 
 	testVMWithoutInstanceView2 = compute.VirtualMachine{
@@ -78,7 +80,7 @@ var (
 			OsProfile: &compute.OSProfile{
 				ComputerName: to.StringPtr("vmssflex1000002"),
 			},
-			ProvisioningState: nil,
+			ProvisioningState: to.StringPtr("Succeeded"),
 			VirtualMachineScaleSet: &compute.SubResource{
 				ID: to.StringPtr(testVmssFlex1ID),
 			},
@@ -103,6 +105,8 @@ var (
 				VMSize: compute.VirtualMachineSizeTypesStandardD2sV3,
 			},
 		},
+		Zones:    &[]string{"1", "2", "3"},
+		Location: to.StringPtr("EastUS"),
 	}
 	testVMListWithoutInstanceView = []compute.VirtualMachine{testVMWithoutInstanceView1, testVMWithoutInstanceView2}
 
@@ -142,7 +146,7 @@ var (
 			OsProfile: &compute.OSProfile{
 				ComputerName: to.StringPtr("vmssflex1000001"),
 			},
-			ProvisioningState: nil,
+			ProvisioningState: to.StringPtr("Succeeded"),
 			VirtualMachineScaleSet: &compute.SubResource{
 				ID: to.StringPtr(testVmssFlex1ID),
 			},
@@ -174,6 +178,8 @@ var (
 				VMSize: compute.VirtualMachineSizeTypesStandardD2sV3,
 			},
 		},
+		Zones:    &[]string{"1", "2", "3"},
+		Location: to.StringPtr("EastUS"),
 	}
 
 	testVmssFlex1 = compute.VirtualMachineScaleSet{
