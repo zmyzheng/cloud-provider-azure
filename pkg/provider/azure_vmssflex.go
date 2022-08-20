@@ -181,7 +181,7 @@ func (fs *FlexScaleSet) GetInstanceIDByNodeName(name string) (string, error) {
 		return "", err
 	}
 	resourceID := *machine.ID
-	convertedResourceID, err := convertResourceGroupNameToLower(resourceID)
+	convertedResourceID, err := ConvertResourceGroupNameToLower(resourceID)
 	if err != nil {
 		klog.Errorf("convertResourceGroupNameToLower failed with error: %v", err)
 		return "", err

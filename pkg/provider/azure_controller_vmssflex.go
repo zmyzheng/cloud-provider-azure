@@ -92,6 +92,11 @@ func (fs *FlexScaleSet) AttachDisk(ctx context.Context, nodeName types.NodeName,
 			},
 		},
 	}
+
+	defer func() {
+		_ = fs.deleteCacheForNode(vmName)
+	}()
+
 	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - attach disk list(%s)", nodeResourceGroup, vmName, diskMap)
 
 	future, rerr := fs.VirtualMachinesClient.UpdateAsync(ctx, nodeResourceGroup, vmName, newVM, "attach_disk")
@@ -114,7 +119,6 @@ func (fs *FlexScaleSet) AttachDisk(ctx context.Context, nodeName types.NodeName,
 
 // DetachDisk detaches a disk from VM
 func (fs *FlexScaleSet) DetachDisk(ctx context.Context, nodeName types.NodeName, diskMap map[string]string) error {
-
 	vmName := mapNodeNameToVMName(nodeName)
 	vm, err := fs.getVmssFlexVM(vmName, azcache.CacheReadTypeDefault)
 	if err != nil {
@@ -168,6 +172,11 @@ func (fs *FlexScaleSet) DetachDisk(ctx context.Context, nodeName types.NodeName,
 			},
 		},
 	}
+
+	defer func() {
+		_ = fs.deleteCacheForNode(vmName)
+	}()
+
 	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - detach disk list(%s)", nodeResourceGroup, vmName, nodeName, diskMap)
 
 	rerr := fs.VirtualMachinesClient.Update(ctx, nodeResourceGroup, vmName, newVM, "detach_disk")
@@ -203,6 +212,11 @@ func (fs *FlexScaleSet) UpdateVM(ctx context.Context, nodeName types.NodeName) e
 	if err != nil {
 		return err
 	}
+
+	defer func() {
+		_ = fs.deleteCacheForNode(vmName)
+	}()
+
 	klog.V(2).Infof("azureDisk - update(%s): vm(%s)", nodeResourceGroup, vmName)
 
 	rerr := fs.VirtualMachinesClient.Update(ctx, nodeResourceGroup, vmName, compute.VirtualMachineUpdate{}, "update_vm")

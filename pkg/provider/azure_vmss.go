@@ -396,9 +396,9 @@ func (ss *ScaleSet) GetInstanceIDByNodeName(name string) (string, error) {
 	}
 
 	resourceID := vm.ID
-	convertedResourceID, err := convertResourceGroupNameToLower(resourceID)
+	convertedResourceID, err := ConvertResourceGroupNameToLower(resourceID)
 	if err != nil {
-		klog.Errorf("convertResourceGroupNameToLower failed with error: %v", err)
+		klog.Errorf("ConvertResourceGroupNameToLower failed with error: %v", err)
 		return "", err
 	}
 	return convertedResourceID, nil
@@ -1037,7 +1037,9 @@ func (ss *ScaleSet) EnsureHostInPool(service *v1.Service, nodeName types.NodeNam
 		}
 
 		klog.Errorf("EnsureHostInPool: failed to get VMSS VM %s: %v", vmName, err)
-		return "", "", "", nil, err
+		if !errors.Is(err, ErrorNotVmssInstance) {
+			return "", "", "", nil, err
+		}
 	}
 
 	klog.V(2).Infof("ensuring node %q of scaleset %q in LB backendpool %q", nodeName, vm.VMSSName, backendPoolID)
