@@ -229,6 +229,22 @@ var (
 				OsProfile: &compute.VirtualMachineScaleSetOSProfile{
 					ComputerNamePrefix: to.StringPtr("vmssflex1"),
 				},
+				NetworkProfile: &compute.VirtualMachineScaleSetNetworkProfile{
+					NetworkInterfaceConfigurations: &[]compute.VirtualMachineScaleSetNetworkConfiguration{
+						{
+							VirtualMachineScaleSetNetworkConfigurationProperties: &compute.VirtualMachineScaleSetNetworkConfigurationProperties{
+								IPConfigurations: &[]compute.VirtualMachineScaleSetIPConfiguration{
+									{
+										VirtualMachineScaleSetIPConfigurationProperties: &compute.VirtualMachineScaleSetIPConfigurationProperties{
+											PrivateIPAddressVersion:         compute.IPVersionIPv4,
+											LoadBalancerBackendAddressPools: &[]compute.SubResource{},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 			OrchestrationMode: compute.OrchestrationModeFlexible,
 		},

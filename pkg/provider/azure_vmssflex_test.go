@@ -774,7 +774,142 @@ func TestEnsureHostInPoolVmssFlex(t *testing.T) {
 
 }
 
+func TestEnsureVMSSFlexInPool(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	testCases := []struct {
+		description                    string
+		nodes                          []*v1.Node
+		service                        *v1.Service
+		vmSetNameOfLB                  string
+		backendPoolID                  string
+		isStandardLB                   bool
+		useMultipleSLBs                bool
+		testVMListWithoutInstanceView  []compute.VirtualMachine
+		testVMListWithOnlyInstanceView []compute.VirtualMachine
+		vmListErr                      error
+		expectedErr                    error
+	}{
+		{
+			description: "ensureVMSSFlexInPool should add a new backend pool to the vmss",
+			nodes: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "vmssflex1000001",
+					},
+				},
+			},
+			service:                        &v1.Service{},
+			vmSetNameOfLB:                  "",
+			backendPoolID:                  "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/loadBalancers/lb-internal/backendAddressPools/backendpool-1",
+			isStandardLB:                   true,
+			useMultipleSLBs:                false,
+			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
+			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
+			vmListErr:                      nil,
+			expectedErr:                    nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		fs, err := NewTestFlexScaleSet(ctrl)
+		assert.NoError(t, err, "unexpected error when creating test FlexScaleSet")
+		if tc.isStandardLB {
+			fs.Config.LoadBalancerSku = consts.LoadBalancerSkuStandard
+		}
+
+		if tc.useMultipleSLBs {
+			fs.EnableMultipleStandardLoadBalancers = true
+		}
+
+		mockVMSSClient := fs.cloud.VirtualMachineScaleSetsClient.(*mockvmssclient.MockInterface)
+		mockVMSSClient.EXPECT().List(gomock.Any(), gomock.Any()).Return(testVmssFlexList, nil).AnyTimes()
+		mockVMSSClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(testVmssFlex1, nil)
+		mockVMSSClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+		mockVMClient := fs.VirtualMachinesClient.(*mockvmclient.MockInterface)
+		mockVMClient.EXPECT().ListVmssFlexVMsWithoutInstanceView(gomock.Any(), gomock.Any()).Return(tc.testVMListWithoutInstanceView, tc.vmListErr).AnyTimes()
+		mockVMClient.EXPECT().ListVmssFlexVMsWithOnlyInstanceView(gomock.Any(), gomock.Any()).Return(tc.testVMListWithOnlyInstanceView, tc.vmListErr).AnyTimes()
+
+		err = fs.ensureVMSSFlexInPool(tc.service, tc.nodes, tc.backendPoolID, tc.vmSetNameOfLB)
+
+		assert.Equal(t, tc.expectedErr, err, tc.description)
+	}
+
+}
+
 func TestEnsureHostsInPoolVmssFlex(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	testCases := []struct {
+		description                    string
+		nodes                          []*v1.Node
+		service                        *v1.Service
+		vmSetNameOfLB                  string
+		backendPoolID                  string
+		isStandardLB                   bool
+		useMultipleSLBs                bool
+		testVMListWithoutInstanceView  []compute.VirtualMachine
+		testVMListWithOnlyInstanceView []compute.VirtualMachine
+		vmListErr                      error
+		nic                            network.Interface
+		nicGetErr                      *retry.Error
+
+		expectedErr error
+	}{
+		{
+			description: "EnsureHostsInPool should add a new backend pool to the vm and vmss",
+			nodes: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "vmssflex1000001",
+					},
+				},
+			},
+			service:                        &v1.Service{},
+			vmSetNameOfLB:                  "",
+			backendPoolID:                  "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/loadBalancers/lb-internal/backendAddressPools/backendpool-1",
+			isStandardLB:                   true,
+			useMultipleSLBs:                false,
+			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
+			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
+			vmListErr:                      nil,
+			nic:                            testNic1,
+			nicGetErr:                      nil,
+			expectedErr:                    nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		fs, err := NewTestFlexScaleSet(ctrl)
+		assert.NoError(t, err, "unexpected error when creating test FlexScaleSet")
+		if tc.isStandardLB {
+			fs.Config.LoadBalancerSku = consts.LoadBalancerSkuStandard
+		}
+
+		if tc.useMultipleSLBs {
+			fs.EnableMultipleStandardLoadBalancers = true
+		}
+
+		mockVMSSClient := fs.cloud.VirtualMachineScaleSetsClient.(*mockvmssclient.MockInterface)
+		mockVMSSClient.EXPECT().List(gomock.Any(), gomock.Any()).Return(testVmssFlexList, nil).AnyTimes()
+		mockVMSSClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(testVmssFlex1, nil)
+		mockVMSSClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+		mockVMClient := fs.VirtualMachinesClient.(*mockvmclient.MockInterface)
+		mockVMClient.EXPECT().ListVmssFlexVMsWithoutInstanceView(gomock.Any(), gomock.Any()).Return(tc.testVMListWithoutInstanceView, tc.vmListErr).AnyTimes()
+		mockVMClient.EXPECT().ListVmssFlexVMsWithOnlyInstanceView(gomock.Any(), gomock.Any()).Return(tc.testVMListWithOnlyInstanceView, tc.vmListErr).AnyTimes()
+
+		mockInterfacesClient := fs.InterfacesClient.(*mockinterfaceclient.MockInterface)
+		mockInterfacesClient.EXPECT().Get(gomock.Any(), gomock.Any(), "testvm1-nic", gomock.Any()).Return(tc.nic, tc.nicGetErr).AnyTimes()
+		mockInterfacesClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+		err = fs.EnsureHostsInPool(tc.service, tc.nodes, tc.backendPoolID, tc.vmSetNameOfLB)
+
+		assert.Equal(t, tc.expectedErr, err, tc.description)
+	}
 
 }
 
