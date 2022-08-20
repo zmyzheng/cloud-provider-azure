@@ -93,13 +93,38 @@ var (
 
 	testVMListWithOnlyInstanceView = []compute.VirtualMachine{testVMWithOnlyInstanceView1, testVMWithOnlyInstanceView2, testVMWithOnlyInstanceView3}
 
-	testVmssFlex1 = compute.VirtualMachineScaleSet{
+	testVmssFlex1 = genreteTestVmssFlex()
+
+	testVmssFlexList = []compute.VirtualMachineScaleSet{testVmssFlex1}
+)
+
+func genreteTestVmssFlex() compute.VirtualMachineScaleSet {
+	return compute.VirtualMachineScaleSet{
 		ID:   to.StringPtr(testVmssFlex1ID),
 		Name: to.StringPtr("vmssflex1"),
 		VirtualMachineScaleSetProperties: &compute.VirtualMachineScaleSetProperties{
 			VirtualMachineProfile: &compute.VirtualMachineScaleSetVMProfile{
 				OsProfile: &compute.VirtualMachineScaleSetOSProfile{
 					ComputerNamePrefix: to.StringPtr("vmssflex1"),
+				},
+				NetworkProfile: &compute.VirtualMachineScaleSetNetworkProfile{
+					NetworkInterfaceConfigurations: &[]compute.VirtualMachineScaleSetNetworkConfiguration{
+						{
+							VirtualMachineScaleSetNetworkConfigurationProperties: &compute.VirtualMachineScaleSetNetworkConfigurationProperties{
+								IPConfigurations: &[]compute.VirtualMachineScaleSetIPConfiguration{
+									{
+										VirtualMachineScaleSetIPConfigurationProperties: &compute.VirtualMachineScaleSetIPConfigurationProperties{
+											LoadBalancerBackendAddressPools: &[]compute.SubResource{
+												{
+													ID: to.StringPtr(testBackendPoolID0),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
 				},
 			},
 			OrchestrationMode: compute.OrchestrationModeFlexible,
@@ -109,9 +134,7 @@ var (
 			consts.VMSetCIDRIPV6TagKey: to.StringPtr("64"),
 		},
 	}
-
-	testVmssFlexList = []compute.VirtualMachineScaleSet{testVmssFlex1}
-)
+}
 
 type VmssFlexTestVMSpec struct {
 	VMName              string
