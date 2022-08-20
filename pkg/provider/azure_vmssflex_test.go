@@ -20,12 +20,19 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-08-01/network"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/interfaceclient/mockinterfaceclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssclient/mockvmssclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
+	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
 
 var (
@@ -214,6 +221,75 @@ func TestGetNodeCIDRMasksByProviderIDVmssFlex(t *testing.T) {
 }
 
 func TestEnsureHostInPoolVmssFlex(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	testCases := []struct {
+		description                    string
+		nodeName                       types.NodeName
+		service                        *v1.Service
+		vmSetNameOfLB                  string
+		backendPoolID                  string
+		isStandardLB                   bool
+		useMultipleSLBs                bool
+		testVMListWithoutInstanceView  []compute.VirtualMachine
+		testVMListWithOnlyInstanceView []compute.VirtualMachine
+		vmListErr                      error
+		nic                            network.Interface
+		nicGetErr                      *retry.Error
+		expectedNodeResourceGroup      string
+		expectedVMSetName              string
+		expectedNodeName               string
+		expectedErr                    error
+	}{
+		{
+			description:                    "EnsureHostInPool should add a new backend pool to the vm",
+			nodeName:                       "vmssflex1000001",
+			service:                        &v1.Service{},
+			vmSetNameOfLB:                  "",
+			backendPoolID:                  "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/loadBalancers/lb-internal/backendAddressPools/backendpool-1",
+			isStandardLB:                   true,
+			useMultipleSLBs:                false,
+			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
+			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
+			vmListErr:                      nil,
+			nic:                            testNic1,
+			nicGetErr:                      nil,
+			expectedNodeResourceGroup:      "rg",
+			expectedVMSetName:              "vmssflex1",
+			expectedNodeName:               "vmssflex1000001",
+			expectedErr:                    nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		fs, err := NewTestFlexScaleSet(ctrl)
+		assert.NoError(t, err, "unexpected error when creating test FlexScaleSet")
+		if tc.isStandardLB {
+			fs.Config.LoadBalancerSku = consts.LoadBalancerSkuStandard
+		}
+
+		if tc.useMultipleSLBs {
+			fs.EnableMultipleStandardLoadBalancers = true
+		}
+
+		mockVMSSClient := fs.cloud.VirtualMachineScaleSetsClient.(*mockvmssclient.MockInterface)
+		mockVMSSClient.EXPECT().List(gomock.Any(), gomock.Any()).Return(testVmssFlexList, nil).AnyTimes()
+
+		mockVMClient := fs.VirtualMachinesClient.(*mockvmclient.MockInterface)
+		mockVMClient.EXPECT().ListVmssFlexVMsWithoutInstanceView(gomock.Any(), gomock.Any()).Return(tc.testVMListWithoutInstanceView, tc.vmListErr).AnyTimes()
+		mockVMClient.EXPECT().ListVmssFlexVMsWithOnlyInstanceView(gomock.Any(), gomock.Any()).Return(tc.testVMListWithOnlyInstanceView, tc.vmListErr).AnyTimes()
+
+		mockInterfacesClient := fs.InterfacesClient.(*mockinterfaceclient.MockInterface)
+		mockInterfacesClient.EXPECT().Get(gomock.Any(), gomock.Any(), "testvm1-nic", gomock.Any()).Return(tc.nic, tc.nicGetErr).AnyTimes()
+		mockInterfacesClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+		rg, vmSetName, nodeName, _, err := fs.EnsureHostInPool(tc.service, tc.nodeName, tc.backendPoolID, tc.vmSetNameOfLB)
+		assert.Equal(t, tc.expectedNodeResourceGroup, rg, tc.description)
+		assert.Equal(t, tc.expectedVMSetName, vmSetName, tc.description)
+		assert.Equal(t, tc.expectedNodeName, nodeName, tc.description)
+		assert.Equal(t, tc.expectedErr, err, tc.description)
+	}
 
 }
 
