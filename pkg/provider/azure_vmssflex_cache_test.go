@@ -22,7 +22,6 @@ import (
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
-	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-08-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -38,22 +37,6 @@ import (
 
 var (
 	testVmssFlex1ID = "subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachineScaleSets/vmssflex1"
-
-	testNic1 = network.Interface{
-		ID:   to.StringPtr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/testvm1-nic"),
-		Name: to.StringPtr("testvm1-nic"),
-		InterfacePropertiesFormat: &network.InterfacePropertiesFormat{
-			IPConfigurations: &[]network.InterfaceIPConfiguration{
-				{
-					InterfaceIPConfigurationPropertiesFormat: &network.InterfaceIPConfigurationPropertiesFormat{
-						PrivateIPAddress:                to.StringPtr("testPrivateIP1"),
-						LoadBalancerBackendAddressPools: &[]network.BackendAddressPool{},
-					},
-				},
-			},
-			ProvisioningState: network.ProvisioningStateSucceeded,
-		},
-	}
 
 	testVMWithoutInstanceView1 = compute.VirtualMachine{
 		Name: to.StringPtr("testvm1"),
@@ -236,8 +219,12 @@ var (
 								IPConfigurations: &[]compute.VirtualMachineScaleSetIPConfiguration{
 									{
 										VirtualMachineScaleSetIPConfigurationProperties: &compute.VirtualMachineScaleSetIPConfigurationProperties{
-											PrivateIPAddressVersion:         compute.IPVersionIPv4,
-											LoadBalancerBackendAddressPools: &[]compute.SubResource{},
+											PrivateIPAddressVersion: compute.IPVersionIPv4,
+											LoadBalancerBackendAddressPools: &[]compute.SubResource{
+												{
+													ID: to.StringPtr(testBackendPoolID0),
+												},
+											},
 										},
 									},
 								},

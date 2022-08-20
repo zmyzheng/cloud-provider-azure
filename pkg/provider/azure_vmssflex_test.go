@@ -22,6 +22,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-08-01/network"
+	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
@@ -50,6 +51,42 @@ var (
 	testNode2       = &v1.Node{
 		ObjectMeta: meta.ObjectMeta{
 			Name: testNodeName2,
+		},
+	}
+
+	testIpConfigurationID = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/testvm1-nic/ipConfigurations/pipConfig"
+	testBackendPoolID0    = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/loadBalancers/lb/backendAddressPools/backendpool-0"
+
+	testNic1 = network.Interface{
+		ID:   to.StringPtr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/testvm1-nic"),
+		Name: to.StringPtr("testvm1-nic"),
+		InterfacePropertiesFormat: &network.InterfacePropertiesFormat{
+			IPConfigurations: &[]network.InterfaceIPConfiguration{
+				{
+					InterfaceIPConfigurationPropertiesFormat: &network.InterfaceIPConfigurationPropertiesFormat{
+						PrivateIPAddress: to.StringPtr("testPrivateIP1"),
+						LoadBalancerBackendAddressPools: &[]network.BackendAddressPool{
+							{
+								ID: to.StringPtr(testBackendPoolID0),
+							},
+						},
+					},
+				},
+			},
+			ProvisioningState: network.ProvisioningStateSucceeded,
+		},
+	}
+
+	testBackendPools = &[]network.BackendAddressPool{
+		{
+			ID: to.StringPtr(testBackendPoolID0),
+			BackendAddressPoolPropertiesFormat: &network.BackendAddressPoolPropertiesFormat{
+				BackendIPConfigurations: &[]network.InterfaceIPConfiguration{
+					{
+						ID: to.StringPtr(testIpConfigurationID),
+					},
+				},
+			},
 		},
 	}
 )
@@ -627,7 +664,7 @@ func TestGetNodeNameByIPConfigurationIDVmssFlex(t *testing.T) {
 	}{
 		{
 			description:                    "GetPrimaryInterface should return the correct Nic by nodeName",
-			ipConfigurationID:              "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/testvm1-nic/ipConfigurations/pipConfig",
+			ipConfigurationID:              testIpConfigurationID,
 			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
 			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
 			vmListErr:                      nil,
@@ -914,9 +951,148 @@ func TestEnsureHostsInPoolVmssFlex(t *testing.T) {
 }
 
 func TestEnsureBackendPoolDeletedFromVMSetsVmssFlex(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	testCases := []struct {
+		description   string
+		vmssNamesMap  map[string]bool
+		backendPoolID string
+		expectedErr   error
+	}{
+		{
+			description: "EnsureBackendPoolDeletedFromVMSets should remove a backend pool from the vmss",
+			vmssNamesMap: map[string]bool{
+				"vmssflex1": true,
+			},
+			backendPoolID: "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/loadBalancers/lb/backendAddressPools/backendpool-0",
+			expectedErr:   nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		fs, err := NewTestFlexScaleSet(ctrl)
+		assert.NoError(t, err, "unexpected error when creating test FlexScaleSet")
+
+		mockVMSSClient := fs.cloud.VirtualMachineScaleSetsClient.(*mockvmssclient.MockInterface)
+		mockVMSSClient.EXPECT().List(gomock.Any(), gomock.Any()).Return(testVmssFlexList, nil).AnyTimes()
+		mockVMSSClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(testVmssFlex1, nil)
+		mockVMSSClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+		err = fs.EnsureBackendPoolDeletedFromVMSets(tc.vmssNamesMap, tc.backendPoolID)
+
+		assert.Equal(t, tc.expectedErr, err, tc.description)
+	}
+
+}
+
+func TestEnsureBackendPoolDeletedFromNodeVmssFlex(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	testCases := []struct {
+		description       string
+		vmssFlexVMNameMap map[string]string
+		backendPoolID     string
+		nic               network.Interface
+		nicGetErr         *retry.Error
+		expectedErr       error
+	}{
+		{
+			description: "EnsureBackendPoolDeletedFromNode should remove a backend pool from the vmss flex vm",
+			vmssFlexVMNameMap: map[string]string{
+				"vmssflex1000001": "testvm1-nic",
+			},
+			backendPoolID: "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/loadBalancers/lb/backendAddressPools/backendpool-0",
+			nic:           testNic1,
+			nicGetErr:     nil,
+			expectedErr:   nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		fs, err := NewTestFlexScaleSet(ctrl)
+		assert.NoError(t, err, "unexpected error when creating test FlexScaleSet")
+
+		mockInterfacesClient := fs.InterfacesClient.(*mockinterfaceclient.MockInterface)
+		mockInterfacesClient.EXPECT().Get(gomock.Any(), gomock.Any(), "testvm1-nic", gomock.Any()).Return(tc.nic, tc.nicGetErr).AnyTimes()
+		mockInterfacesClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+		err = fs.ensureBackendPoolDeletedFromNode(tc.vmssFlexVMNameMap, tc.backendPoolID)
+
+		assert.Equal(t, tc.expectedErr, err, tc.description)
+	}
 
 }
 
 func TestEnsureBackendPoolDeletedVmssFlex(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	testCases := []struct {
+		description         string
+		service             *v1.Service
+		vmSetName           string
+		backendPoolID       string
+		backendAddressPools *[]network.BackendAddressPool
+		deleteFromVMSet     bool
+		isStandardLB        bool
+		useMultipleSLBs     bool
+
+		testVMListWithoutInstanceView  []compute.VirtualMachine
+		testVMListWithOnlyInstanceView []compute.VirtualMachine
+		vmListErr                      error
+		nic                            network.Interface
+		nicGetErr                      *retry.Error
+
+		expectedErr error
+	}{
+		{
+			description:                    "EnsureBackendPoolDeleted should delete a backend pool from the vm and vmss",
+			service:                        &v1.Service{},
+			vmSetName:                      "vmssflex1",
+			backendPoolID:                  testBackendPoolID0,
+			backendAddressPools:            testBackendPools,
+			deleteFromVMSet:                true,
+			isStandardLB:                   true,
+			useMultipleSLBs:                false,
+			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
+			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
+			vmListErr:                      nil,
+			nic:                            testNic1,
+			nicGetErr:                      nil,
+			expectedErr:                    nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		fs, err := NewTestFlexScaleSet(ctrl)
+		assert.NoError(t, err, "unexpected error when creating test FlexScaleSet")
+		if tc.isStandardLB {
+			fs.Config.LoadBalancerSku = consts.LoadBalancerSkuStandard
+		}
+
+		if tc.useMultipleSLBs {
+			fs.EnableMultipleStandardLoadBalancers = true
+		}
+
+		mockVMSSClient := fs.cloud.VirtualMachineScaleSetsClient.(*mockvmssclient.MockInterface)
+		mockVMSSClient.EXPECT().List(gomock.Any(), gomock.Any()).Return(testVmssFlexList, nil).AnyTimes()
+		mockVMSSClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(testVmssFlex1, nil)
+		mockVMSSClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+		mockVMClient := fs.VirtualMachinesClient.(*mockvmclient.MockInterface)
+		mockVMClient.EXPECT().ListVmssFlexVMsWithoutInstanceView(gomock.Any(), gomock.Any()).Return(tc.testVMListWithoutInstanceView, tc.vmListErr).AnyTimes()
+		mockVMClient.EXPECT().ListVmssFlexVMsWithOnlyInstanceView(gomock.Any(), gomock.Any()).Return(tc.testVMListWithOnlyInstanceView, tc.vmListErr).AnyTimes()
+
+		mockInterfacesClient := fs.InterfacesClient.(*mockinterfaceclient.MockInterface)
+		mockInterfacesClient.EXPECT().Get(gomock.Any(), gomock.Any(), "testvm1-nic", gomock.Any()).Return(tc.nic, tc.nicGetErr).AnyTimes()
+		mockInterfacesClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+		err = fs.EnsureBackendPoolDeleted(tc.service, tc.backendPoolID, tc.vmSetName, tc.backendAddressPools, tc.deleteFromVMSet)
+
+		assert.Equal(t, tc.expectedErr, err, tc.description)
+	}
 
 }
