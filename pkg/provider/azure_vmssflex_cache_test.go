@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-08-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -31,11 +32,25 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssclient/mockvmssclient"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
+	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
 
 var (
 	testVmssFlex1ID = "subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachineScaleSets/vmssflex1"
+
+	testNic1 = network.Interface{
+		ID: to.StringPtr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/testvm1-nic"),
+		InterfacePropertiesFormat: &network.InterfacePropertiesFormat{
+			IPConfigurations: &[]network.InterfaceIPConfiguration{
+				{
+					InterfaceIPConfigurationPropertiesFormat: &network.InterfaceIPConfigurationPropertiesFormat{
+						PrivateIPAddress: to.StringPtr("testPrivateIP1"),
+					},
+				},
+			},
+		},
+	}
 
 	testVMWithoutInstanceView1 = compute.VirtualMachine{
 		Name: to.StringPtr("testvm1"),
@@ -67,6 +82,13 @@ var (
 			},
 			HardwareProfile: &compute.HardwareProfile{
 				VMSize: compute.VirtualMachineSizeTypesStandardD2sV3,
+			},
+			NetworkProfile: &compute.NetworkProfile{
+				NetworkInterfaces: &[]compute.NetworkInterfaceReference{
+					{
+						ID: to.StringPtr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/testvm1-nic"),
+					},
+				},
 			},
 		},
 		Zones:    &[]string{"1", "2", "3"},
@@ -103,6 +125,13 @@ var (
 			},
 			HardwareProfile: &compute.HardwareProfile{
 				VMSize: compute.VirtualMachineSizeTypesStandardD2sV3,
+			},
+			NetworkProfile: &compute.NetworkProfile{
+				NetworkInterfaces: &[]compute.NetworkInterfaceReference{
+					{
+						ID: to.StringPtr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/testvm2-nic"),
+					},
+				},
 			},
 		},
 		Zones:    &[]string{"1", "2", "3"},
@@ -177,6 +206,13 @@ var (
 			HardwareProfile: &compute.HardwareProfile{
 				VMSize: compute.VirtualMachineSizeTypesStandardD2sV3,
 			},
+			NetworkProfile: &compute.NetworkProfile{
+				NetworkInterfaces: &[]compute.NetworkInterfaceReference{
+					{
+						ID: to.StringPtr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/testvm1-nic"),
+					},
+				},
+			},
 		},
 		Zones:    &[]string{"1", "2", "3"},
 		Location: to.StringPtr("EastUS"),
@@ -192,6 +228,10 @@ var (
 				},
 			},
 			OrchestrationMode: compute.OrchestrationModeFlexible,
+		},
+		Tags: map[string]*string{
+			consts.VMSetCIDRIPV4TagKey: to.StringPtr("24"),
+			consts.VMSetCIDRIPV6TagKey: to.StringPtr("64"),
 		},
 	}
 

@@ -380,13 +380,41 @@ func (fs *FlexScaleSet) GetPrivateIPsByNodeName(name string) ([]string, error) {
 
 // GetNodeNameByIPConfigurationID gets the nodeName and vmSetName by IP configuration ID.
 func (fs *FlexScaleSet) GetNodeNameByIPConfigurationID(ipConfigurationID string) (string, string, error) {
-	vmName, vmssFlexName, _, err := fs.getNodeInfoByIPConfigurationID(ipConfigurationID)
+	nodeName, vmssFlexName, _, err := fs.getNodeInformationByIPConfigurationID(ipConfigurationID)
 	if err != nil {
 		klog.Errorf("fs.GetNodeNameByIPConfigurationID(%s) failed. Error: %v", ipConfigurationID, err)
 		return "", "", err
 	}
 
-	return vmName, strings.ToLower(vmssFlexName), nil
+	return nodeName, strings.ToLower(vmssFlexName), nil
+}
+
+func (fs *FlexScaleSet) getNodeInformationByIPConfigurationID(ipConfigurationID string) (string, string, string, error) {
+	matches := nicIDRE.FindStringSubmatch(ipConfigurationID)
+	if len(matches) != 3 {
+		klog.V(4).Infof("Can not extract nic name from ipConfigurationID (%s)", ipConfigurationID)
+		return "", "", "", fmt.Errorf("invalid ip config ID %s", ipConfigurationID)
+	}
+
+	nicResourceGroup, nicName := matches[1], matches[2]
+	if nicResourceGroup == "" || nicName == "" {
+		return "", "", "", fmt.Errorf("invalid ip config ID %s", ipConfigurationID)
+	}
+
+	vmName := strings.Replace(nicName, "-nic", "", 1)
+	nodeName, err := fs.getNodeNameByVMName(vmName)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to map VM Name to NodeName: VM Name %s", vmName)
+	}
+
+	vmssFlexName, err := fs.getNodeVmssFlexName(nodeName)
+
+	if err != nil {
+		klog.Errorf("Unable to get the vmss flex name by node name %s: %v", vmName, err)
+		return "", "", "", err
+	}
+
+	return nodeName, strings.ToLower(vmssFlexName), nicName, nil
 }
 
 func (fs *FlexScaleSet) getNodeInfoByIPConfigurationID(ipConfigurationID string) (string, string, network.Interface, error) {
@@ -431,42 +459,18 @@ func (fs *FlexScaleSet) getNodeInfoByIPConfigurationID(ipConfigurationID string)
 	return vmName, strings.ToLower(vmssFlexName), nic, nil
 }
 
-func (fs *FlexScaleSet) getNodeInformationByIPConfigurationID(ipConfigurationID string) (string, string, string, error) {
-	matches := nicIDRE.FindStringSubmatch(ipConfigurationID)
-	if len(matches) != 3 {
-		klog.V(4).Infof("Can not extract nic name from ipConfigurationID (%s)", ipConfigurationID)
-		return "", "", "", fmt.Errorf("invalid ip config ID %s", ipConfigurationID)
-	}
-
-	nicResourceGroup, nicName := matches[1], matches[2]
-	if nicResourceGroup == "" || nicName == "" {
-		return "", "", "", fmt.Errorf("invalid ip config ID %s", ipConfigurationID)
-	}
-
-	vmName := strings.Replace(nicName, "-nic", "", 1)
-
-	vmssFlexName, err := fs.getNodeVmssFlexName(vmName)
-
-	if err != nil {
-		klog.Errorf("Unable to get the vmss flex name by node name %s: %v", vmName, err)
-		return "", "", "", err
-	}
-
-	return vmName, strings.ToLower(vmssFlexName), nicName, nil
-}
-
 // ------------------------------------------------------------
 
 // GetNodeCIDRMaskByProviderID returns the node CIDR subnet mask by provider ID.
 func (fs *FlexScaleSet) GetNodeCIDRMasksByProviderID(providerID string) (int, int, error) {
-	nodeName, err := fs.GetNodeNameByProviderID(providerID)
-	vmName := mapNodeNameToVMName(nodeName)
+	nodeNameWrapper, err := fs.GetNodeNameByProviderID(providerID)
 	if err != nil {
 		klog.Errorf("Unable to get the vmss flex vm node name by providerID %s: %v", providerID, err)
 		return 0, 0, err
 	}
+	nodeName := mapNodeNameToVMName(nodeNameWrapper)
 
-	vmssFlex, err := fs.getVmssFlexByNodeName(vmName, azcache.CacheReadTypeDefault)
+	vmssFlex, err := fs.getVmssFlexByNodeName(nodeName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		if errors.Is(err, cloudprovider.InstanceNotFound) {
 			return consts.DefaultNodeMaskCIDRIPv4, consts.DefaultNodeMaskCIDRIPv6, nil
@@ -489,7 +493,6 @@ func (fs *FlexScaleSet) GetNodeCIDRMasksByProviderID(providerID string) (int, in
 	}
 
 	return ipv4Mask, ipv6Mask, nil
-
 }
 
 // -------------------------------------
