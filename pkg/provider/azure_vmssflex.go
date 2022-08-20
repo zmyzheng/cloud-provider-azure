@@ -500,10 +500,10 @@ func (fs *FlexScaleSet) GetNodeCIDRMasksByProviderID(providerID string) (int, in
 // participating in the specified LoadBalancer Backend Pool, which returns (resourceGroup, vmasName, instanceID, vmssVM, error).
 func (fs *FlexScaleSet) EnsureHostInPool(service *v1.Service, nodeName types.NodeName, backendPoolID string, vmSetNameOfLB string) (string, string, string, *compute.VirtualMachineScaleSetVM, error) {
 	serviceName := getServiceName(service)
-	vmName := mapNodeNameToVMName(nodeName)
-	vmssFlexName, err := fs.getNodeVmssFlexName(vmName)
+	name := mapNodeNameToVMName(nodeName)
+	vmssFlexName, err := fs.getNodeVmssFlexName(name)
 	if err != nil {
-		klog.Errorf("EnsureHostInPool: failed to get VMSS Flex Name %s: %v", vmName, err)
+		klog.Errorf("EnsureHostInPool: failed to get VMSS Flex Name %s: %v", name, err)
 		return "", "", "", nil, nil
 	}
 
@@ -529,20 +529,21 @@ func (fs *FlexScaleSet) EnsureHostInPool(service *v1.Service, nodeName types.Nod
 		}
 	}
 	if vmSetNameOfLB != "" && needCheck && !strings.EqualFold(vmSetNameOfLB, vmssFlexName) {
-		klog.V(3).Infof("EnsureHostInPool skips node %s because it is not in the ScaleSet %s", vmName, vmSetNameOfLB)
+		klog.V(3).Infof("EnsureHostInPool skips node %s because it is not in the ScaleSet %s", name, vmSetNameOfLB)
 		return "", "", "", nil, errNotInVMSet
 	}
 
-	nic, err := fs.GetPrimaryInterface(vmName)
+	nic, err := fs.GetPrimaryInterface(name)
 	if err != nil {
 		if errors.Is(err, cloudprovider.InstanceNotFound) {
-			klog.Infof("EnsureHostInPool: skipping node %s because it is not found", vmName)
+			klog.Infof("EnsureHostInPool: skipping node %s because it is not found", name)
 			return "", "", "", nil, nil
 		}
 
-		klog.Errorf("error: fs.EnsureHostInPool(%s), s.GetPrimaryInterface(%s), vmSetNameOfLB: %s, err=%v", vmName, vmName, vmSetNameOfLB, err)
+		klog.Errorf("error: fs.EnsureHostInPool(%s), s.GetPrimaryInterface(%s), vmSetNameOfLB: %s, err=%v", name, name, vmSetNameOfLB, err)
 		return "", "", "", nil, err
 	}
+
 	if nic.ProvisioningState == consts.NicFailedState {
 		klog.Warningf("EnsureHostInPool skips node %s because its primary nic %s is in Failed state", nodeName, *nic.Name)
 		return "", "", "", nil, nil
@@ -614,13 +615,32 @@ func (fs *FlexScaleSet) EnsureHostInPool(service *v1.Service, nodeName types.Nod
 	}
 
 	// Get the node resource group.
-	nodeResourceGroup, err := fs.GetNodeResourceGroup(vmName)
+	nodeResourceGroup, err := fs.GetNodeResourceGroup(name)
 	if err != nil {
 		return "", "", "", nil, err
 	}
 
-	return nodeResourceGroup, vmssFlexName, vmName, nil, nil
+	return nodeResourceGroup, vmssFlexName, name, nil, nil
 
+}
+
+func (fs *FlexScaleSet) getConfigForScaleSetByIPFamily(config *compute.VirtualMachineScaleSetNetworkConfiguration, nodeName string, IPv6 bool) (*compute.VirtualMachineScaleSetIPConfiguration, error) {
+	ipConfigurations := *config.IPConfigurations
+
+	var ipVersion compute.IPVersion
+	if IPv6 {
+		ipVersion = compute.IPVersionIPv6
+	} else {
+		ipVersion = compute.IPVersionIPv4
+	}
+	for idx := range ipConfigurations {
+		ipConfig := &ipConfigurations[idx]
+		if ipConfig.PrivateIPAddressVersion == ipVersion {
+			return ipConfig, nil
+		}
+	}
+
+	return nil, fmt.Errorf("failed to find a IPconfiguration(IPv6=%v) for the scale set VM %q", IPv6, nodeName)
 }
 
 func (fs *FlexScaleSet) ensureVMSSFlexInPool(service *v1.Service, nodes []*v1.Node, backendPoolID string, vmSetNameOfLB string) error {
@@ -705,7 +725,7 @@ func (fs *FlexScaleSet) ensureVMSSFlexInPool(service *v1.Service, nodes []*v1.No
 				return err
 			}
 		} else {
-			primaryIPConfig, err = getConfigForScaleSetByIPFamily(primaryNIC, "", ipv6)
+			primaryIPConfig, err = fs.getConfigForScaleSetByIPFamily(primaryNIC, "", ipv6)
 			if err != nil {
 				return err
 			}

@@ -40,15 +40,18 @@ var (
 	testVmssFlex1ID = "subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachineScaleSets/vmssflex1"
 
 	testNic1 = network.Interface{
-		ID: to.StringPtr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/testvm1-nic"),
+		ID:   to.StringPtr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/testvm1-nic"),
+		Name: to.StringPtr("testvm1-nic"),
 		InterfacePropertiesFormat: &network.InterfacePropertiesFormat{
 			IPConfigurations: &[]network.InterfaceIPConfiguration{
 				{
 					InterfaceIPConfigurationPropertiesFormat: &network.InterfaceIPConfigurationPropertiesFormat{
-						PrivateIPAddress: to.StringPtr("testPrivateIP1"),
+						PrivateIPAddress:                to.StringPtr("testPrivateIP1"),
+						LoadBalancerBackendAddressPools: &[]network.BackendAddressPool{},
 					},
 				},
 			},
+			ProvisioningState: network.ProvisioningStateSucceeded,
 		},
 	}
 
