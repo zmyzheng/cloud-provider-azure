@@ -366,7 +366,7 @@ func (fs *FlexScaleSet) GetPrivateIPsByNodeName(name string) ([]string, error) {
 	}
 
 	if nic.IPConfigurations == nil {
-		return ips, fmt.Errorf("nic.IPConfigurations for nic (nicname=%q) is nil", *nic.Name)
+		return ips, fmt.Errorf("nic.IPConfigurations for nic (nicname=%s) is nil", *nic.Name)
 	}
 
 	for _, ipConfig := range *(nic.IPConfigurations) {

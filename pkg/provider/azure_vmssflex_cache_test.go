@@ -38,171 +38,61 @@ import (
 var (
 	testVmssFlex1ID = "subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachineScaleSets/vmssflex1"
 
-	testVMWithoutInstanceView1 = compute.VirtualMachine{
-		Name: to.StringPtr("testvm1"),
-		ID:   to.StringPtr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/testvm1"),
-		VirtualMachineProperties: &compute.VirtualMachineProperties{
-			OsProfile: &compute.OSProfile{
-				ComputerName: to.StringPtr("vmssflex1000001"),
-			},
-			ProvisioningState: to.StringPtr("Succeeded"),
-			VirtualMachineScaleSet: &compute.SubResource{
-				ID: to.StringPtr(testVmssFlex1ID),
-			},
-			StorageProfile: &compute.StorageProfile{
-				OsDisk: &compute.OSDisk{
-					Name: to.StringPtr("osdisk1"),
-					ManagedDisk: &compute.ManagedDiskParameters{
-						ID: to.StringPtr("ManagedID1"),
-						DiskEncryptionSet: &compute.DiskEncryptionSetParameters{
-							ID: to.StringPtr("DiskEncryptionSetID1"),
-						},
-					},
-				},
-				DataDisks: &[]compute.DataDisk{
-					{
-						Lun:  to.Int32Ptr(1),
-						Name: to.StringPtr("dataDisk1"),
-					},
-				},
-			},
-			HardwareProfile: &compute.HardwareProfile{
-				VMSize: compute.VirtualMachineSizeTypesStandardD2sV3,
-			},
-			NetworkProfile: &compute.NetworkProfile{
-				NetworkInterfaces: &[]compute.NetworkInterfaceReference{
-					{
-						ID: to.StringPtr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/testvm1-nic"),
-					},
-				},
+	testVM1Spec = VmssFlexTestVMSpec{
+		VMName:              "testvm1",
+		VMID:                "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/testvm1",
+		ComputerName:        "vmssflex1000001",
+		ProvisioningState:   to.StringPtr("Succeeded"),
+		VmssFlexID:          testVmssFlex1ID,
+		Zones:               &[]string{"1", "2", "3"},
+		PlatformFaultDomain: to.Int32Ptr(1),
+		Status: &[]compute.InstanceViewStatus{
+			{
+				Code: to.StringPtr("PowerState/running"),
 			},
 		},
-		Zones:    &[]string{"1", "2", "3"},
-		Location: to.StringPtr("EastUS"),
-	}
 
-	testVMWithoutInstanceView2 = compute.VirtualMachine{
-		Name: to.StringPtr("testvm2"),
-		ID:   to.StringPtr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/testvm2"),
-		VirtualMachineProperties: &compute.VirtualMachineProperties{
-			OsProfile: &compute.OSProfile{
-				ComputerName: to.StringPtr("vmssflex1000002"),
-			},
-			ProvisioningState: to.StringPtr("Succeeded"),
-			VirtualMachineScaleSet: &compute.SubResource{
-				ID: to.StringPtr(testVmssFlex1ID),
-			},
-			StorageProfile: &compute.StorageProfile{
-				OsDisk: &compute.OSDisk{
-					Name: to.StringPtr("osdisk2"),
-					ManagedDisk: &compute.ManagedDiskParameters{
-						ID: to.StringPtr("ManagedID2"),
-						DiskEncryptionSet: &compute.DiskEncryptionSetParameters{
-							ID: to.StringPtr("DiskEncryptionSetID2"),
-						},
-					},
-				},
-				DataDisks: &[]compute.DataDisk{
-					{
-						Lun:  to.Int32Ptr(2),
-						Name: to.StringPtr("dataDisk2"),
-					},
-				},
-			},
-			HardwareProfile: &compute.HardwareProfile{
-				VMSize: compute.VirtualMachineSizeTypesStandardD2sV3,
-			},
-			NetworkProfile: &compute.NetworkProfile{
-				NetworkInterfaces: &[]compute.NetworkInterfaceReference{
-					{
-						ID: to.StringPtr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/testvm2-nic"),
-					},
-				},
-			},
-		},
-		Zones:    &[]string{"1", "2", "3"},
-		Location: to.StringPtr("EastUS"),
+		NicID: "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/testvm1-nic",
 	}
-	testVMListWithoutInstanceView = []compute.VirtualMachine{testVMWithoutInstanceView1, testVMWithoutInstanceView2}
+	testVMWithoutInstanceView1  = generateVmssFlexTestVMWithoutInstanceView(testVM1Spec)
+	testVMWithOnlyInstanceView1 = generateVmssFlexTestVMWithOnlyInstanceView(testVM1Spec)
+	testVM1                     = generateVmssFlexTestVM(testVM1Spec)
 
-	testVMWithOnlyInstanceView1 = compute.VirtualMachine{
-		Name: to.StringPtr("testvm1"),
-		ID:   to.StringPtr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/testvm1"),
-		VirtualMachineProperties: &compute.VirtualMachineProperties{
-			InstanceView: &compute.VirtualMachineInstanceView{
-				Statuses: &[]compute.InstanceViewStatus{
-					{
-						Code: to.StringPtr("PowerState/running"),
-					},
-				},
+	testVM2Spec = VmssFlexTestVMSpec{
+		VMName:              "testvm2",
+		VMID:                "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/testvm2",
+		ComputerName:        "vmssflex1000002",
+		ProvisioningState:   to.StringPtr("Succeeded"),
+		VmssFlexID:          testVmssFlex1ID,
+		Zones:               nil,
+		PlatformFaultDomain: to.Int32Ptr(1),
+		Status: &[]compute.InstanceViewStatus{
+			{
+				Code: to.StringPtr("PowerState/running"),
 			},
 		},
+		NicID: "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/testvm2-nic",
 	}
+	testVMWithoutInstanceView2  = generateVmssFlexTestVMWithoutInstanceView(testVM2Spec)
+	testVMWithOnlyInstanceView2 = generateVmssFlexTestVMWithOnlyInstanceView(testVM2Spec)
 
-	testVMWithOnlyInstanceView2 = compute.VirtualMachine{
-		Name: to.StringPtr("testvm2"),
-		ID:   to.StringPtr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/testvm2"),
-		VirtualMachineProperties: &compute.VirtualMachineProperties{
-			InstanceView: &compute.VirtualMachineInstanceView{
-				Statuses: &[]compute.InstanceViewStatus{
-					{
-						Code: to.StringPtr("PowerState/running"),
-					},
-				},
-			},
-		},
+	testVM3Spec = VmssFlexTestVMSpec{
+		VMName:              "testvm3",
+		VMID:                "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/testvm3",
+		ComputerName:        "vmssflex1000003",
+		ProvisioningState:   nil,
+		VmssFlexID:          testVmssFlex1ID,
+		Zones:               nil,
+		PlatformFaultDomain: nil,
+		Status:              &[]compute.InstanceViewStatus{},
+		NicID:               "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/testvm3-nic",
 	}
-	testVMListWithOnlyInstanceView = []compute.VirtualMachine{testVMWithOnlyInstanceView1, testVMWithOnlyInstanceView2}
+	testVMWithoutInstanceView3  = generateVmssFlexTestVMWithoutInstanceView(testVM3Spec)
+	testVMWithOnlyInstanceView3 = generateVmssFlexTestVMWithOnlyInstanceView(testVM3Spec)
 
-	testVM1 = compute.VirtualMachine{
-		Name: to.StringPtr("testvm1"),
-		ID:   to.StringPtr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/testvm1"),
-		VirtualMachineProperties: &compute.VirtualMachineProperties{
-			OsProfile: &compute.OSProfile{
-				ComputerName: to.StringPtr("vmssflex1000001"),
-			},
-			ProvisioningState: to.StringPtr("Succeeded"),
-			VirtualMachineScaleSet: &compute.SubResource{
-				ID: to.StringPtr(testVmssFlex1ID),
-			},
-			InstanceView: &compute.VirtualMachineInstanceView{
-				Statuses: &[]compute.InstanceViewStatus{
-					{
-						Code: to.StringPtr("PowerState/running"),
-					},
-				},
-			},
-			StorageProfile: &compute.StorageProfile{
-				OsDisk: &compute.OSDisk{
-					Name: to.StringPtr("osdisk1"),
-					ManagedDisk: &compute.ManagedDiskParameters{
-						ID: to.StringPtr("ManagedID1"),
-						DiskEncryptionSet: &compute.DiskEncryptionSetParameters{
-							ID: to.StringPtr("DiskEncryptionSetID1"),
-						},
-					},
-				},
-				DataDisks: &[]compute.DataDisk{
-					{
-						Lun:  to.Int32Ptr(1),
-						Name: to.StringPtr("dataDisk1"),
-					},
-				},
-			},
-			HardwareProfile: &compute.HardwareProfile{
-				VMSize: compute.VirtualMachineSizeTypesStandardD2sV3,
-			},
-			NetworkProfile: &compute.NetworkProfile{
-				NetworkInterfaces: &[]compute.NetworkInterfaceReference{
-					{
-						ID: to.StringPtr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/testvm1-nic"),
-					},
-				},
-			},
-		},
-		Zones:    &[]string{"1", "2", "3"},
-		Location: to.StringPtr("EastUS"),
-	}
+	testVMListWithoutInstanceView = []compute.VirtualMachine{testVMWithoutInstanceView1, testVMWithoutInstanceView2, testVMWithoutInstanceView3}
+
+	testVMListWithOnlyInstanceView = []compute.VirtualMachine{testVMWithOnlyInstanceView1, testVMWithOnlyInstanceView2, testVMWithOnlyInstanceView3}
 
 	testVmssFlex1 = compute.VirtualMachineScaleSet{
 		ID:   to.StringPtr(testVmssFlex1ID),
@@ -244,6 +134,82 @@ var (
 	testVmssFlexList = []compute.VirtualMachineScaleSet{testVmssFlex1}
 )
 
+type VmssFlexTestVMSpec struct {
+	VMName              string
+	VMID                string
+	ComputerName        string
+	ProvisioningState   *string
+	VmssFlexID          string
+	Zones               *[]string
+	PlatformFaultDomain *int32
+	Status              *[]compute.InstanceViewStatus
+	NicID               string
+}
+
+func generateVmssFlexTestVMWithoutInstanceView(spec VmssFlexTestVMSpec) (testVMWithoutInstanceView compute.VirtualMachine) {
+	return compute.VirtualMachine{
+		Name: to.StringPtr(spec.VMName),
+		ID:   to.StringPtr(spec.VMID),
+		VirtualMachineProperties: &compute.VirtualMachineProperties{
+			OsProfile: &compute.OSProfile{
+				ComputerName: to.StringPtr(spec.ComputerName),
+			},
+			ProvisioningState: spec.ProvisioningState,
+			VirtualMachineScaleSet: &compute.SubResource{
+				ID: to.StringPtr(spec.VmssFlexID),
+			},
+			StorageProfile: &compute.StorageProfile{
+				OsDisk: &compute.OSDisk{
+					Name: to.StringPtr("osdisk" + spec.VMName),
+					ManagedDisk: &compute.ManagedDiskParameters{
+						ID: to.StringPtr("ManagedID" + spec.VMName),
+						DiskEncryptionSet: &compute.DiskEncryptionSetParameters{
+							ID: to.StringPtr("DiskEncryptionSetID" + spec.VMName),
+						},
+					},
+				},
+				DataDisks: &[]compute.DataDisk{
+					{
+						Lun:  to.Int32Ptr(1),
+						Name: to.StringPtr("dataDisk" + spec.VMName),
+					},
+				},
+			},
+			HardwareProfile: &compute.HardwareProfile{
+				VMSize: compute.VirtualMachineSizeTypesStandardD2sV3,
+			},
+			NetworkProfile: &compute.NetworkProfile{
+				NetworkInterfaces: &[]compute.NetworkInterfaceReference{
+					{
+						ID: to.StringPtr(spec.NicID),
+					},
+				},
+			},
+		},
+		Zones:    spec.Zones,
+		Location: to.StringPtr("EastUS"),
+	}
+}
+
+func generateVmssFlexTestVMWithOnlyInstanceView(spec VmssFlexTestVMSpec) (testVMWithOnlyInstanceView compute.VirtualMachine) {
+	return compute.VirtualMachine{
+		Name: to.StringPtr(spec.VMName),
+		ID:   to.StringPtr(spec.VMID),
+		VirtualMachineProperties: &compute.VirtualMachineProperties{
+			InstanceView: &compute.VirtualMachineInstanceView{
+				PlatformFaultDomain: spec.PlatformFaultDomain,
+				Statuses:            spec.Status,
+			},
+		},
+	}
+}
+
+func generateVmssFlexTestVM(spec VmssFlexTestVMSpec) compute.VirtualMachine {
+	testVM := generateVmssFlexTestVMWithoutInstanceView(spec)
+	testVM.InstanceView = generateVmssFlexTestVMWithOnlyInstanceView(spec).InstanceView
+	return testVM
+}
+
 func TestGetNodeNameByVMName(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -268,7 +234,7 @@ func TestGetNodeNameByVMName(t *testing.T) {
 		},
 		{
 			description:                    "getNodeVmssFlexID should throw InstanceNotFound error if the VM cannot be found",
-			vmName:                         "testvm3",
+			vmName:                         nonExistingNodeName,
 			testVMListWithoutInstanceView:  []compute.VirtualMachine{},
 			testVMListWithOnlyInstanceView: []compute.VirtualMachine{},
 			vmListErr:                      nil,
@@ -318,7 +284,7 @@ func TestGetNodeVmssFlexID(t *testing.T) {
 		},
 		{
 			description:                    "getNodeVmssFlexID should throw InstanceNotFound error if the VM cannot be found",
-			nodeName:                       "testvm3",
+			nodeName:                       "NonExistingNodeName",
 			testVMListWithoutInstanceView:  []compute.VirtualMachine{},
 			testVMListWithOnlyInstanceView: []compute.VirtualMachine{},
 			vmListErr:                      nil,

@@ -54,7 +54,9 @@ var (
 		},
 	}
 
-	testIpConfigurationID = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/testvm1-nic/ipConfigurations/pipConfig"
+	nonExistingNodeName = "NonExistingNodeName"
+
+	testIPConfigurationID = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/testvm1-nic/ipConfigurations/pipConfig"
 	testBackendPoolID0    = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/loadBalancers/lb/backendAddressPools/backendpool-0"
 
 	testNic1 = network.Interface{
@@ -83,11 +85,16 @@ var (
 			BackendAddressPoolPropertiesFormat: &network.BackendAddressPoolPropertiesFormat{
 				BackendIPConfigurations: &[]network.InterfaceIPConfiguration{
 					{
-						ID: to.StringPtr(testIpConfigurationID),
+						ID: to.StringPtr(testIPConfigurationID),
 					},
 				},
 			},
 		},
+	}
+	testNic2 = network.Interface{
+		ID:                        to.StringPtr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/testvm2-nic"),
+		Name:                      to.StringPtr("testvm2-nic"),
+		InterfacePropertiesFormat: &network.InterfacePropertiesFormat{},
 	}
 )
 
@@ -242,7 +249,7 @@ func TestGetNodeNameByProviderIDVmssFlex(t *testing.T) {
 		},
 		{
 			description:                    "GetNodeNameByProviderID should throw error of instance not found if the vm is deleted",
-			providerID:                     "azure:///subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/testvm3",
+			providerID:                     "azure:///subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/" + nonExistingNodeName,
 			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
 			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
 			vmListErr:                      nil,
@@ -383,7 +390,7 @@ func TestGetZoneByNodeNameVmssFlex(t *testing.T) {
 		expectedErr                    error
 	}{
 		{
-			description:                    "GetInstanceIDByNodeName should return the correct InstanceID by nodeName",
+			description:                    "GetZoneByNodeName should return the correct zone by nodeName",
 			nodeName:                       testNodeName1,
 			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
 			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
@@ -393,6 +400,36 @@ func TestGetZoneByNodeNameVmssFlex(t *testing.T) {
 				Region:        "eastus",
 			},
 			expectedErr: nil,
+		},
+		{
+			description:                    "GetZoneByNodeName should return Instance Not Found if the node cannot be found",
+			nodeName:                       nonExistingNodeName,
+			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
+			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
+			vmListErr:                      nil,
+			expectedZone:                   cloudprovider.Zone{},
+			expectedErr:                    cloudprovider.InstanceNotFound,
+		},
+		{
+			description:                    "GetZoneByNodeName should return the correct zone if zone is nil but fault domain is not nil",
+			nodeName:                       "vmssflex1000002",
+			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
+			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
+			vmListErr:                      nil,
+			expectedZone: cloudprovider.Zone{
+				FailureDomain: "1",
+				Region:        "eastus",
+			},
+			expectedErr: nil,
+		},
+		{
+			description:                    "GetZoneByNodeName should return the error if both zone and fault domain are nil",
+			nodeName:                       "vmssflex1000003",
+			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
+			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
+			vmListErr:                      nil,
+			expectedZone:                   cloudprovider.Zone{},
+			expectedErr:                    fmt.Errorf("failed to get zone info"),
 		},
 	}
 
@@ -428,12 +465,30 @@ func TestGetProvisioningStateByNodeNameVmssFlex(t *testing.T) {
 		expectedErr                    error
 	}{
 		{
-			description:                    "GetInstanceIDByNodeName should return the correct InstanceID by nodeName",
+			description:                    "GetProvisioningStateByNodeName should return the correct ProvisioningState by nodeName",
 			nodeName:                       testNodeName1,
 			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
 			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
 			vmListErr:                      nil,
 			expectedProvisioningState:      "Succeeded",
+			expectedErr:                    nil,
+		},
+		{
+			description:                    "GetProvisioningStateByNodeName should return Instance Not Found if the node cannot be found",
+			nodeName:                       nonExistingNodeName,
+			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
+			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
+			vmListErr:                      nil,
+			expectedProvisioningState:      "",
+			expectedErr:                    cloudprovider.InstanceNotFound,
+		},
+		{
+			description:                    "GetProvisioningStateByNodeName should return empty provisioning state if the provisioning state is nil",
+			nodeName:                       "vmssflex1000003",
+			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
+			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
+			vmListErr:                      nil,
+			expectedProvisioningState:      "",
 			expectedErr:                    nil,
 		},
 	}
@@ -470,12 +525,30 @@ func TestGetPowerStatusByNodeNameVmssFlex(t *testing.T) {
 		expectedErr                    error
 	}{
 		{
-			description:                    "GetInstanceIDByNodeName should return the correct InstanceID by nodeName",
+			description:                    "GetPowerStatusByNodeName should return the correct PowerState by nodeName",
 			nodeName:                       testNodeName1,
 			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
 			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
 			vmListErr:                      nil,
 			expectedPowerStatus:            "running",
+			expectedErr:                    nil,
+		},
+		{
+			description:                    "GetPowerStatusByNodeName should return Instance Not Found if the node cannot be found",
+			nodeName:                       nonExistingNodeName,
+			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
+			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
+			vmListErr:                      nil,
+			expectedPowerStatus:            "",
+			expectedErr:                    cloudprovider.InstanceNotFound,
+		},
+		{
+			description:                    "GetPowerStatusByNodeName should return stopped if the node powerstate is nil",
+			nodeName:                       "vmssflex1000003",
+			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
+			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
+			vmListErr:                      nil,
+			expectedPowerStatus:            "stopped",
 			expectedErr:                    nil,
 		},
 	}
@@ -524,6 +597,28 @@ func TestGetPrimaryInterfaceVmssFlex(t *testing.T) {
 			expectedNeworkInterface:        testNic1,
 			expectedErr:                    nil,
 		},
+		{
+			description:                    "GetPrimaryInterface should return Instance Not Found if the node cannot be found",
+			nodeName:                       nonExistingNodeName,
+			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
+			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
+			vmListErr:                      nil,
+			nic:                            network.Interface{},
+			nicGetErr:                      nil,
+			expectedNeworkInterface:        network.Interface{},
+			expectedErr:                    cloudprovider.InstanceNotFound,
+		},
+		{
+			description:                    "GetPrimaryInterface should return Instance Not Found if the NIC cannot be found",
+			nodeName:                       "vmssflex1000002",
+			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
+			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
+			vmListErr:                      nil,
+			nic:                            network.Interface{},
+			nicGetErr:                      &retry.Error{RawError: fmt.Errorf("NIC not found")},
+			expectedNeworkInterface:        network.Interface{},
+			expectedErr:                    fmt.Errorf("Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: NIC not found"),
+		},
 	}
 
 	for _, tc := range testCases {
@@ -538,13 +633,14 @@ func TestGetPrimaryInterfaceVmssFlex(t *testing.T) {
 		mockVMClient.EXPECT().ListVmssFlexVMsWithOnlyInstanceView(gomock.Any(), gomock.Any()).Return(tc.testVMListWithOnlyInstanceView, tc.vmListErr).AnyTimes()
 
 		mockInterfacesClient := fs.InterfacesClient.(*mockinterfaceclient.MockInterface)
-		mockInterfacesClient.EXPECT().Get(gomock.Any(), gomock.Any(), "testvm1-nic", gomock.Any()).Return(tc.nic, tc.nicGetErr).AnyTimes()
+		mockInterfacesClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(tc.nic, tc.nicGetErr).AnyTimes()
 
 		nic, err := fs.GetPrimaryInterface(tc.nodeName)
-		assert.Equal(t, tc.expectedNeworkInterface, nic)
-		assert.Equal(t, tc.expectedErr, err)
+		assert.Equal(t, tc.expectedNeworkInterface, nic, tc.description)
+		if tc.expectedErr != nil {
+			assert.EqualError(t, err, tc.expectedErr.Error(), tc.description)
+		}
 	}
-
 }
 
 func TestGetIPByNodeNameVmssFlex(t *testing.T) {
@@ -564,7 +660,7 @@ func TestGetIPByNodeNameVmssFlex(t *testing.T) {
 		expectedErr                    error
 	}{
 		{
-			description:                    "GetPrimaryInterface should return the correct Nic by nodeName",
+			description:                    "GetIPByNodeName should return the correct IP by nodeName",
 			nodeName:                       testNodeName1,
 			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
 			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
@@ -615,7 +711,7 @@ func TestGetPrivateIPsByNodeNameVmssFlex(t *testing.T) {
 		expectedErr                    error
 	}{
 		{
-			description:                    "GetPrimaryInterface should return the correct Nic by nodeName",
+			description:                    "GetPrivateIPsByNodeName should return the correct Private IPs by nodeName",
 			nodeName:                       testNodeName1,
 			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
 			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
@@ -624,6 +720,17 @@ func TestGetPrivateIPsByNodeNameVmssFlex(t *testing.T) {
 			nicGetErr:                      nil,
 			expectedPrivateIPs:             []string{"testPrivateIP1"},
 			expectedErr:                    nil,
+		},
+		{
+			description:                    "GetPrivateIPsByNodeName should return the correct Private IPs by nodeName",
+			nodeName:                       "vmssflex1000002",
+			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
+			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
+			vmListErr:                      nil,
+			nic:                            testNic2,
+			nicGetErr:                      nil,
+			expectedPrivateIPs:             []string{},
+			expectedErr:                    fmt.Errorf("nic.IPConfigurations for nic (nicname=testvm2-nic) is nil"),
 		},
 	}
 
@@ -639,7 +746,7 @@ func TestGetPrivateIPsByNodeNameVmssFlex(t *testing.T) {
 		mockVMClient.EXPECT().ListVmssFlexVMsWithOnlyInstanceView(gomock.Any(), gomock.Any()).Return(tc.testVMListWithOnlyInstanceView, tc.vmListErr).AnyTimes()
 
 		mockInterfacesClient := fs.InterfacesClient.(*mockinterfaceclient.MockInterface)
-		mockInterfacesClient.EXPECT().Get(gomock.Any(), gomock.Any(), "testvm1-nic", gomock.Any()).Return(tc.nic, tc.nicGetErr).AnyTimes()
+		mockInterfacesClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(tc.nic, tc.nicGetErr).AnyTimes()
 
 		ips, err := fs.GetPrivateIPsByNodeName(tc.nodeName)
 		assert.Equal(t, tc.expectedPrivateIPs, ips)
@@ -663,14 +770,34 @@ func TestGetNodeNameByIPConfigurationIDVmssFlex(t *testing.T) {
 		expectedErr                    error
 	}{
 		{
-			description:                    "GetPrimaryInterface should return the correct Nic by nodeName",
-			ipConfigurationID:              testIpConfigurationID,
+			description:                    "GetNodeNameByIPConfigurationID should return the correct nodeName by IPConfig",
+			ipConfigurationID:              testIPConfigurationID,
 			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
 			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
 			vmListErr:                      nil,
 			expectedNodeName:               "vmssflex1000001",
 			expectedVMSetName:              "vmssflex1",
 			expectedErr:                    nil,
+		},
+		{
+			description:                    "GetNodeNameByIPConfigurationID should return error if the VM does not exist",
+			ipConfigurationID:              fmt.Sprintf("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/%s-nic/ipConfigurations/pipConfig", nonExistingNodeName),
+			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
+			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
+			vmListErr:                      nil,
+			expectedNodeName:               "",
+			expectedVMSetName:              "",
+			expectedErr:                    fmt.Errorf("failed to map VM Name to NodeName: VM Name NonExistingNodeName"),
+		},
+		{
+			description:                    "GetNodeNameByIPConfigurationID should return error if the ipConfigurationID is in wrong format",
+			ipConfigurationID:              "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces//ipConfigurations/pipConfig",
+			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
+			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
+			vmListErr:                      nil,
+			expectedNodeName:               "",
+			expectedVMSetName:              "",
+			expectedErr:                    fmt.Errorf("invalid ip config ID /subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces//ipConfigurations/pipConfig"),
 		},
 	}
 
@@ -703,12 +830,13 @@ func TestGetNodeCIDRMasksByProviderIDVmssFlex(t *testing.T) {
 		testVMListWithoutInstanceView  []compute.VirtualMachine
 		testVMListWithOnlyInstanceView []compute.VirtualMachine
 		vmListErr                      error
+		tags                           map[string]*string
 		expectedNodeMaskCIDRIPv4       int
 		expectedNodeMaskCIDRIPv6       int
 		expectedErr                    error
 	}{
 		{
-			description:                    "GetPrimaryInterface should return the correct Nic by nodeName",
+			description:                    "GetNodeCIDRMasksByProviderID should return the GetNodeCIDRMasksByProviderID",
 			providerID:                     "azure:///subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/testvm1",
 			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
 			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
@@ -717,12 +845,62 @@ func TestGetNodeCIDRMasksByProviderIDVmssFlex(t *testing.T) {
 			expectedNodeMaskCIDRIPv6:       64,
 			expectedErr:                    nil,
 		},
+		{
+			description:                    "GetNodeCIDRMasksByProviderID should return error if the node does not exist",
+			providerID:                     "azure:///subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/" + nonExistingNodeName,
+			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
+			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
+			vmListErr:                      nil,
+			expectedNodeMaskCIDRIPv4:       0,
+			expectedNodeMaskCIDRIPv6:       0,
+			expectedErr:                    cloudprovider.InstanceNotFound,
+		},
+		{
+			description:                    "GetNodeCIDRMasksByProviderID should return error if providerID is invalid",
+			providerID:                     "azure:///subscriptions//resourceGroups//providers/Microsoft.Compute/virtualMachines",
+			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
+			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
+			vmListErr:                      nil,
+			expectedNodeMaskCIDRIPv4:       0,
+			expectedNodeMaskCIDRIPv6:       0,
+			expectedErr:                    fmt.Errorf("error splitting providerID"),
+		},
+		{
+			description:                    "GetNodeCIDRMasksByProviderID should return the correct mask sizes even if some of the tags are not specified",
+			providerID:                     "azure:///subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/testvm1",
+			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
+			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
+			vmListErr:                      nil,
+			tags: map[string]*string{
+				consts.VMSetCIDRIPV4TagKey: to.StringPtr("24"),
+			},
+			expectedNodeMaskCIDRIPv4: 24,
+			expectedNodeMaskCIDRIPv6: 0,
+			expectedErr:              nil,
+		},
+		{
+			description:                    "GetNodeCIDRMasksByProviderID should not fail even if some of the tag is invalid",
+			providerID:                     "azure:///subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/testvm1",
+			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
+			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
+			vmListErr:                      nil,
+			tags: map[string]*string{
+				consts.VMSetCIDRIPV4TagKey: to.StringPtr("abc"),
+				consts.VMSetCIDRIPV6TagKey: to.StringPtr("64"),
+			},
+			expectedNodeMaskCIDRIPv4: 0,
+			expectedNodeMaskCIDRIPv6: 64,
+			expectedErr:              nil,
+		},
 	}
 
 	for _, tc := range testCases {
 		fs, err := NewTestFlexScaleSet(ctrl)
 		assert.NoError(t, err, "unexpected error when creating test FlexScaleSet")
 
+		if tc.tags != nil {
+			testVmssFlexList[0].Tags = tc.tags
+		}
 		mockVMSSClient := fs.cloud.VirtualMachineScaleSetsClient.(*mockvmssclient.MockInterface)
 		mockVMSSClient.EXPECT().List(gomock.Any(), gomock.Any()).Return(testVmssFlexList, nil).AnyTimes()
 

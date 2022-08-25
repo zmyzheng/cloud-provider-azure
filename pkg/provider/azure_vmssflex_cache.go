@@ -147,7 +147,7 @@ func (fs *FlexScaleSet) getNodeNameByVMName(vmName string) (string, error) {
 			vmssFlexID := key.(string)
 			_, err := fs.vmssFlexVMCache.Get(vmssFlexID, azcache.CacheReadTypeForceRefresh)
 			if err != nil {
-				klog.V(12).Infof("failed to refresh vmss flex VM cache for vmssFlexID %s", vmssFlexID)
+				klog.Errorf("failed to refresh vmss flex VM cache for vmssFlexID %s", vmssFlexID)
 			}
 			return true
 		})
@@ -161,6 +161,7 @@ func (fs *FlexScaleSet) getNodeNameByVMName(vmName string) (string, error) {
 
 	nodeName, err := getter(vmName, azcache.CacheReadTypeDefault)
 	if err == cloudprovider.InstanceNotFound {
+		klog.V(2).Infof("Could not find node (%s) in the existing cache. Forcely freshing the cache to check again...", nodeName)
 		return getter(vmName, azcache.CacheReadTypeForceRefresh)
 	}
 	return nodeName, err
@@ -187,7 +188,7 @@ func (fs *FlexScaleSet) getNodeVmssFlexID(nodeName string) (string, error) {
 			vmssFlexID := key.(string)
 			_, err := fs.vmssFlexVMCache.Get(vmssFlexID, azcache.CacheReadTypeForceRefresh)
 			if err != nil {
-				klog.V(12).Infof("failed to refresh vmss flex VM cache for vmssFlexID %s", vmssFlexID)
+				klog.Errorf("failed to refresh vmss flex VM cache for vmssFlexID %s", vmssFlexID)
 			}
 			return true
 		})
@@ -201,6 +202,7 @@ func (fs *FlexScaleSet) getNodeVmssFlexID(nodeName string) (string, error) {
 
 	vmssFlexID, err := getter(nodeName, azcache.CacheReadTypeDefault)
 	if err == cloudprovider.InstanceNotFound {
+		klog.V(2).Infof("Could not find node (%s) in the existing cache. Forcely freshing the cache to check again...", nodeName)
 		return getter(nodeName, azcache.CacheReadTypeForceRefresh)
 	}
 	return vmssFlexID, err
