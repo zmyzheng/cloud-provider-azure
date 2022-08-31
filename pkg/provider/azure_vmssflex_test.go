@@ -95,7 +95,6 @@ func generateTestNic(nicName string, isIPConfigurationsNil bool, provisioningSta
 			ProvisioningState: provisioningState,
 		},
 	}
-
 	if isIPConfigurationsNil {
 		result.InterfacePropertiesFormat.IPConfigurations = nil
 	}
@@ -1174,7 +1173,6 @@ func TestEnsureHostInPoolVmssFlex(t *testing.T) {
 		assert.Equal(t, tc.expectedNodeResourceGroup, rg, tc.description)
 		assert.Equal(t, tc.expectedVMSetName, vmSetName, tc.description)
 		assert.Equal(t, tc.expectedNodeName, nodeName, tc.description)
-
 		if tc.expectedErr != nil {
 			assert.EqualError(t, err, tc.expectedErr.Error(), tc.description)
 		}
@@ -1212,20 +1210,17 @@ func TestEnsureVMSSFlexInPool(t *testing.T) {
 					},
 				},
 			},
-			service:         &v1.Service{},
-			vmSetNameOfLB:   "",
-			backendPoolID:   "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/loadBalancers/lb-internal/backendAddressPools/backendpool-1",
-			isStandardLB:    true,
-			useMultipleSLBs: false,
-
-			hasDefaultVMProfile: true,
-
+			service:                        &v1.Service{},
+			vmSetNameOfLB:                  "",
+			backendPoolID:                  "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/loadBalancers/lb-internal/backendAddressPools/backendpool-1",
+			isStandardLB:                   true,
+			useMultipleSLBs:                false,
+			hasDefaultVMProfile:            true,
 			testVMListWithoutInstanceView:  testVMListWithoutInstanceView,
 			testVMListWithOnlyInstanceView: testVMListWithOnlyInstanceView,
 			vmListErr:                      nil,
 			expectedErr:                    nil,
 		},
-
 		{
 			description: "ensureVMSSFlexInPool should skip the node if it isn't managed by VMSS",
 			nodes: []*v1.Node{
@@ -1426,9 +1421,7 @@ func TestEnsureVMSSFlexInPool(t *testing.T) {
 		if tc.expectedErr != nil {
 			assert.EqualError(t, err, tc.expectedErr.Error(), tc.description)
 		}
-
 	}
-
 }
 
 func TestEnsureHostsInPoolVmssFlex(t *testing.T) {
@@ -1448,9 +1441,8 @@ func TestEnsureHostsInPoolVmssFlex(t *testing.T) {
 		vmListErr                      error
 		nic                            network.Interface
 		nicGetErr                      *retry.Error
-
-		vmssPutErr  *retry.Error
-		expectedErr error
+		vmssPutErr                     *retry.Error
+		expectedErr                    error
 	}{
 		{
 			description: "EnsureHostsInPool should add a new backend pool to the vm and vmss",
@@ -1473,7 +1465,6 @@ func TestEnsureHostsInPoolVmssFlex(t *testing.T) {
 			nicGetErr:                      nil,
 			expectedErr:                    nil,
 		},
-
 		{
 			description: "EnsureHostsInPool should return error if basic load balancer is used",
 			nodes: []*v1.Node{
@@ -1531,7 +1522,6 @@ func TestEnsureHostsInPoolVmssFlex(t *testing.T) {
 		}
 
 		mockVMSSClient := fs.cloud.VirtualMachineScaleSetsClient.(*mockvmssclient.MockInterface)
-
 		mockVMSSClient.EXPECT().List(gomock.Any(), gomock.Any()).Return([]compute.VirtualMachineScaleSet{genreteTestVmssFlex()}, nil).AnyTimes()
 		mockVMSSClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(testVmssFlex1, nil).AnyTimes()
 		mockVMSSClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(tc.vmssPutErr).AnyTimes()
@@ -1549,9 +1539,7 @@ func TestEnsureHostsInPoolVmssFlex(t *testing.T) {
 		if tc.expectedErr != nil {
 			assert.EqualError(t, err, tc.expectedErr.Error(), tc.description)
 		}
-
 	}
-
 }
 
 func TestEnsureBackendPoolDeletedFromVMSetsVmssFlex(t *testing.T) {
