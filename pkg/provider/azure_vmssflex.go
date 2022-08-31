@@ -508,15 +508,16 @@ func (fs *FlexScaleSet) EnsureHostInPool(service *v1.Service, nodeName types.Nod
 	}
 
 	// Check scale set name:
-	// - For basic SKU load balancer, return nil if the node's scale set is mismatched with vmSetNameOfLB.
+
+	// - For basic SKU load balancer, return error as VMSS Flex does not support basic load balancer.
 	// - For single standard SKU load balancer, backend could belong to multiple VMSS, so we
 	//   don't check vmSet for it.
-	// - For multiple standard SKU load balancers, the behavior is similar to the basic load balancer
+	// - For multiple standard SKU load balancers, return nil if the node's scale set is mismatched with vmSetNameOfLB
 	needCheck := false
 	if !fs.useStandardLoadBalancer() {
-		// need to check the vmSet name when using the basic LB
-		needCheck = true
-	} else if fs.EnableMultipleStandardLoadBalancers {
+		return "", "", "", nil, fmt.Errorf("EnsureHostInPool: VMSS Flex does not support Basic Load Balancer")
+	}
+	if fs.EnableMultipleStandardLoadBalancers {
 		// need to check the vmSet name when using multiple standard LBs
 		needCheck = true
 
@@ -535,11 +536,6 @@ func (fs *FlexScaleSet) EnsureHostInPool(service *v1.Service, nodeName types.Nod
 
 	nic, err := fs.GetPrimaryInterface(name)
 	if err != nil {
-		if errors.Is(err, cloudprovider.InstanceNotFound) {
-			klog.Infof("EnsureHostInPool: skipping node %s because it is not found", name)
-			return "", "", "", nil, nil
-		}
-
 		klog.Errorf("error: fs.EnsureHostInPool(%s), s.GetPrimaryInterface(%s), vmSetNameOfLB: %s, err=%v", name, name, vmSetNameOfLB, err)
 		return "", "", "", nil, err
 	}
@@ -624,31 +620,16 @@ func (fs *FlexScaleSet) EnsureHostInPool(service *v1.Service, nodeName types.Nod
 
 }
 
-func (fs *FlexScaleSet) getConfigForScaleSetByIPFamily(config *compute.VirtualMachineScaleSetNetworkConfiguration, nodeName string, IPv6 bool) (*compute.VirtualMachineScaleSetIPConfiguration, error) {
-	ipConfigurations := *config.IPConfigurations
-
-	var ipVersion compute.IPVersion
-	if IPv6 {
-		ipVersion = compute.IPVersionIPv6
-	} else {
-		ipVersion = compute.IPVersionIPv4
-	}
-	for idx := range ipConfigurations {
-		ipConfig := &ipConfigurations[idx]
-		if ipConfig.PrivateIPAddressVersion == ipVersion {
-			return ipConfig, nil
-		}
-	}
-
-	return nil, fmt.Errorf("failed to find a IPconfiguration(IPv6=%v) for the scale set VM %q", IPv6, nodeName)
-}
-
 func (fs *FlexScaleSet) ensureVMSSFlexInPool(service *v1.Service, nodes []*v1.Node, backendPoolID string, vmSetNameOfLB string) error {
 	klog.V(2).Infof("ensureVMSSInPool: ensuring VMSS Flex with backendPoolID %s", backendPoolID)
 	vmssFlexIDsMap := make(map[string]bool)
 
+	if !fs.useStandardLoadBalancer() {
+		return fmt.Errorf("ensureVMSSFlexInPool: VMSS Flex does not support Basic Load Balancer")
+	}
+
 	// the single standard load balancer supports multiple vmss in its backend while
-	// multiple standard load balancers and the basic load balancer doesn't
+	// multiple standard load balancers doesn't
 	if fs.useStandardLoadBalancer() && !fs.EnableMultipleStandardLoadBalancers {
 		for _, node := range nodes {
 			if fs.excludeMasterNodesFromStandardLB() && isControlPlaneNode(node) {
@@ -691,7 +672,7 @@ func (fs *FlexScaleSet) ensureVMSSFlexInPool(service *v1.Service, nodes []*v1.No
 		vmssFlexIDsMap[vmssFlexID] = true
 	}
 
-	klog.V(2).Infof("ensureVMSSInPool begins to update VMSS %v with backendPoolID %s", vmssFlexIDsMap, backendPoolID)
+	klog.V(2).Infof("ensureVMSSInPool begins to update VMSS list %v with backendPoolID %s", vmssFlexIDsMap, backendPoolID)
 	for vmssFlexID := range vmssFlexIDsMap {
 		vmssFlex, err := fs.getVmssFlexByVmssFlexID(vmssFlexID, azcache.CacheReadTypeDefault)
 		if err != nil {
@@ -711,7 +692,8 @@ func (fs *FlexScaleSet) ensureVMSSFlexInPool(service *v1.Service, nodes []*v1.No
 			continue
 		}
 		vmssNIC := *vmssFlex.VirtualMachineProfile.NetworkProfile.NetworkInterfaceConfigurations
-		primaryNIC, err := fs.getPrimaryNetworkInterfaceConfigurationForScaleSet(vmssNIC)
+
+		primaryNIC, err := getPrimaryNetworkInterfaceConfigurationForScaleSet(vmssNIC, vmssFlexName)
 		if err != nil {
 			return err
 		}
@@ -725,7 +707,8 @@ func (fs *FlexScaleSet) ensureVMSSFlexInPool(service *v1.Service, nodes []*v1.No
 				return err
 			}
 		} else {
-			primaryIPConfig, err = fs.getConfigForScaleSetByIPFamily(primaryNIC, "", ipv6)
+
+			primaryIPConfig, err = getConfigForScaleSetByIPFamily(primaryNIC, "", ipv6)
 			if err != nil {
 				return err
 			}
@@ -793,22 +776,7 @@ func (fs *FlexScaleSet) ensureVMSSFlexInPool(service *v1.Service, nodes []*v1.No
 		}
 	}
 	return nil
-}
 
-// getPrimaryNetworkInterfaceConfigurationForScaleSet gets primary network interface configuration for scale set.
-func (fs *FlexScaleSet) getPrimaryNetworkInterfaceConfigurationForScaleSet(networkConfigurations []compute.VirtualMachineScaleSetNetworkConfiguration) (*compute.VirtualMachineScaleSetNetworkConfiguration, error) {
-	if len(networkConfigurations) == 1 {
-		return &networkConfigurations[0], nil
-	}
-
-	for idx := range networkConfigurations {
-		networkConfig := &networkConfigurations[idx]
-		if networkConfig.Primary != nil && *networkConfig.Primary {
-			return networkConfig, nil
-		}
-	}
-
-	return nil, fmt.Errorf("failed to find a primary network configuration for the scale set")
 }
 
 // EnsureHostsInPool ensures the given Node's primary IP configurations are
@@ -886,7 +854,7 @@ func (fs *FlexScaleSet) EnsureBackendPoolDeletedFromVMSets(vmssNamesMap map[stri
 			continue
 		}
 		vmssNIC := *vmss.VirtualMachineProfile.NetworkProfile.NetworkInterfaceConfigurations
-		primaryNIC, err := fs.getPrimaryNetworkInterfaceConfigurationForScaleSet(vmssNIC)
+		primaryNIC, err := getPrimaryNetworkInterfaceConfigurationForScaleSet(vmssNIC, vmssName)
 		if err != nil {
 			klog.Errorf("EnsureBackendPoolDeletedFromVMSets: failed to get the primary network interface config of the VMSS %s: %v", vmssName, err)
 			errors = append(errors, err)
