@@ -91,6 +91,7 @@ func (fs *FlexScaleSet) getNodeVmssFlexName(nodeName string) (string, error) {
 	klog.V(2).Infof("calling fs.getNodeVmssFlexName(%s)", nodeName)
 	vmssFlexID, err := fs.getNodeVmssFlexID(nodeName)
 	if err != nil {
+		klog.Errorf("fs.getNodeVmssFlexName failed with error: %v", err)
 		return "", err
 	}
 	vmssFlexName, err := getLastSegment(vmssFlexID, "/")
@@ -178,6 +179,7 @@ func (fs *FlexScaleSet) GetNodeNameByProviderID(providerID string) (types.NodeNa
 
 	nodeName, err := fs.getNodeNameByVMName(matches[1])
 	if err != nil {
+		klog.Errorf("fs.getNodeNameByVMName failed with error: %v", err)
 		return "", err
 	}
 	return types.NodeName(nodeName), nil
@@ -190,9 +192,11 @@ func (fs *FlexScaleSet) GetInstanceIDByNodeName(name string) (string, error) {
 	klog.V(2).Infof("calling fs.GetInstanceIDByNodeName(%s)", name)
 	machine, err := fs.getVmssFlexVM(name, azcache.CacheReadTypeUnsafe)
 	if err != nil {
+		klog.Errorf("fs.getVmssFlexVM failed with error: %v", err)
 		return "", err
 	}
 	if machine.ID == nil {
+		klog.Errorf("ProviderID of node(%s) is nil", name)
 		return "", fmt.Errorf("ProviderID of node(%s) is nil", name)
 	}
 	resourceID := *machine.ID
@@ -215,6 +219,7 @@ func (fs *FlexScaleSet) GetInstanceTypeByNodeName(name string) (string, error) {
 	}
 
 	if machine.HardwareProfile == nil {
+		klog.Errorf("HardwareProfile of node(%s) is nil", name)
 		return "", fmt.Errorf("HardwareProfile of node(%s) is nil", name)
 	}
 	return string(machine.HardwareProfile.VMSize), nil
@@ -233,6 +238,8 @@ func (fs *FlexScaleSet) GetZoneByNodeName(name string) (cloudprovider.Zone, erro
 
 	var failureDomain string
 	if vm.Zones != nil && len(*vm.Zones) > 0 {
+		klog.V(2).Infof("Get availability zone for the node.")
+
 		// Get availability zone for the node.
 		zones := *vm.Zones
 		zoneID, err := strconv.Atoi(zones[0])
@@ -243,6 +250,7 @@ func (fs *FlexScaleSet) GetZoneByNodeName(name string) (cloudprovider.Zone, erro
 		failureDomain = fs.makeZone(to.String(vm.Location), zoneID)
 	} else if vm.VirtualMachineProperties.InstanceView != nil && vm.VirtualMachineProperties.InstanceView.PlatformFaultDomain != nil {
 		// Availability zone is not used for the node, falling back to fault domain.
+		klog.V(2).Infof("Availability zone is not used for the node, falling back to fault domain.")
 		failureDomain = strconv.Itoa(int(to.Int32(vm.VirtualMachineProperties.InstanceView.PlatformFaultDomain)))
 	} else {
 		err = fmt.Errorf("failed to get zone info")
@@ -262,6 +270,7 @@ func (fs *FlexScaleSet) GetProvisioningStateByNodeName(name string) (provisionin
 	klog.V(2).Infof("calling fs.GetProvisioningStateByNodeName(%s)", name)
 	vm, err := fs.getVmssFlexVM(name, azcache.CacheReadTypeDefault)
 	if err != nil {
+		klog.Errorf("fs.getVmssFlexVM failed with error: %v", err)
 		return provisioningState, err
 	}
 
@@ -277,6 +286,7 @@ func (fs *FlexScaleSet) GetPowerStatusByNodeName(name string) (powerState string
 	klog.V(2).Infof("calling fs.GetPowerStatusByNodeName(%s)", name)
 	vm, err := fs.getVmssFlexVM(name, azcache.CacheReadTypeDefault)
 	if err != nil {
+		klog.Errorf("fs.getVmssFlexVM failed with error: %v", err)
 		return powerState, err
 	}
 
@@ -306,15 +316,18 @@ func (fs *FlexScaleSet) GetPrimaryInterface(nodeName string) (network.Interface,
 
 	primaryNicID, err := getPrimaryInterfaceID(machine)
 	if err != nil {
+		klog.Errorf("getPrimaryInterfaceID failed with error: %v", err)
 		return network.Interface{}, err
 	}
 	nicName, err := getLastSegment(primaryNicID, "/")
 	if err != nil {
+		klog.Errorf("getLastSegment failed with error: %v", err)
 		return network.Interface{}, err
 	}
 
 	nicResourceGroup, err := extractResourceGroupByNicID(primaryNicID)
 	if err != nil {
+		klog.Errorf("extractResourceGroupByNicID failed with error: %v", err)
 		return network.Interface{}, err
 	}
 
@@ -322,6 +335,7 @@ func (fs *FlexScaleSet) GetPrimaryInterface(nodeName string) (network.Interface,
 	defer cancel()
 	nic, rerr := fs.InterfacesClient.Get(ctx, nicResourceGroup, nicName, "")
 	if rerr != nil {
+		klog.Errorf("fs.InterfacesClient.Get failed with error: %v", rerr)
 		return network.Interface{}, rerr.Error()
 	}
 
@@ -335,6 +349,7 @@ func (fs *FlexScaleSet) GetIPByNodeName(name string) (string, string, error) {
 	klog.V(2).Infof("calling fs.GetIPByNodeName(%s)", name)
 	nic, err := fs.GetPrimaryInterface(name)
 	if err != nil {
+		klog.Errorf("fs.GetPrimaryInterface failed with error: %v", err)
 		return "", "", err
 	}
 
@@ -350,10 +365,12 @@ func (fs *FlexScaleSet) GetIPByNodeName(name string) (string, string, error) {
 		pipID := *ipConfig.PublicIPAddress.ID
 		pipName, err := getLastSegment(pipID, "/")
 		if err != nil {
+			klog.Errorf("failed to publicIP name for node %q with pipID %q", name, pipID)
 			return "", "", fmt.Errorf("failed to publicIP name for node %q with pipID %q", name, pipID)
 		}
 		pip, existsPip, err := fs.getPublicIPAddress(fs.ResourceGroup, pipName, azcache.CacheReadTypeDefault)
 		if err != nil {
+			klog.Errorf("ffs.getPublicIPAddress failed with error: %q", err)
 			return "", "", err
 		}
 		if existsPip {
@@ -373,10 +390,12 @@ func (fs *FlexScaleSet) GetPrivateIPsByNodeName(name string) ([]string, error) {
 	ips := make([]string, 0)
 	nic, err := fs.GetPrimaryInterface(name)
 	if err != nil {
+		klog.Errorf("fs.GetPrimaryInterface failed with error: %q", err)
 		return ips, err
 	}
 
 	if nic.IPConfigurations == nil {
+		klog.Errorf("nic.IPConfigurations for nic (nicname=%s) is nil", *nic.Name)
 		return ips, fmt.Errorf("nic.IPConfigurations for nic (nicname=%s) is nil", *nic.Name)
 	}
 
@@ -404,18 +423,20 @@ func (fs *FlexScaleSet) GetNodeNameByIPConfigurationID(ipConfigurationID string)
 func (fs *FlexScaleSet) getNodeInformationByIPConfigurationID(ipConfigurationID string) (string, string, string, error) {
 	matches := nicIDRE.FindStringSubmatch(ipConfigurationID)
 	if len(matches) != 3 {
-		klog.V(4).Infof("Can not extract nic name from ipConfigurationID (%s)", ipConfigurationID)
+		klog.V(2).Infof("Can not extract nic name from ipConfigurationID (%s)", ipConfigurationID)
 		return "", "", "", fmt.Errorf("invalid ip config ID %s", ipConfigurationID)
 	}
 
 	nicResourceGroup, nicName := matches[1], matches[2]
 	if nicResourceGroup == "" || nicName == "" {
+		klog.Errorf("invalid ip config ID %s", ipConfigurationID)
 		return "", "", "", fmt.Errorf("invalid ip config ID %s", ipConfigurationID)
 	}
 
 	vmName := strings.Replace(nicName, "-nic", "", 1)
 	nodeName, err := fs.getNodeNameByVMName(vmName)
 	if err != nil {
+		klog.Errorf("failed to map VM Name to NodeName: VM Name %s", vmName)
 		return "", "", "", fmt.Errorf("failed to map VM Name to NodeName: VM Name %s", vmName)
 	}
 
