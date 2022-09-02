@@ -82,6 +82,7 @@ func newFlexScaleSet(az *Cloud) (VMSet, error) {
 // GetPrimaryVMSetName returns the VM set name depending on the configured vmType.
 // It returns config.PrimaryScaleSetName for vmss and config.PrimaryAvailabilitySetName for standard vmType.
 func (fs *FlexScaleSet) GetPrimaryVMSetName() string {
+	klog.V(2).Infof("fs.GetPrimaryVMSetName: %s", fs.Config.PrimaryScaleSetName)
 	return fs.Config.PrimaryScaleSetName
 }
 
@@ -103,12 +104,13 @@ func (fs *FlexScaleSet) getNodeVmssFlexName(nodeName string) (string, error) {
 // GetNodeVMSetName returns the availability set or vmss name by the node name.
 // It will return empty string when using standalone vms.
 func (fs *FlexScaleSet) GetNodeVMSetName(node *v1.Node) (string, error) {
-	klog.V(2).Infof("fs.GetNodeVMSetName")
+	klog.V(2).Infof("fs.GetNodeVMSetName: %s", node.Name)
 	return fs.getNodeVmssFlexName(node.Name)
 }
 
 // GetAgentPoolVMSetNames returns all vmSet names according to the nodes
 func (fs *FlexScaleSet) GetAgentPoolVMSetNames(nodes []*v1.Node) (*[]string, error) {
+	klog.V(2).Infof("calling fs.GetAgentPoolVMSetNames(%q)", nodes)
 	vmSetNames := make([]string, 0)
 	for _, node := range nodes {
 		vmSetName, err := fs.GetNodeVMSetName(node)
@@ -127,6 +129,7 @@ func (fs *FlexScaleSet) GetAgentPoolVMSetNames(nodes []*v1.Node) (*[]string, err
 // for loadbalancer exists then returns the eligible VMSet. The mode selection
 // annotation would be ignored when using one SLB per cluster.
 func (fs *FlexScaleSet) GetVMSetNames(service *v1.Service, nodes []*v1.Node) (*[]string, error) {
+	klog.V(2).Infof("calling fs.GetAgentGetVMSetNamesPoolVMSetNames(%q)", nodes)
 	hasMode, isAuto, serviceVMSetName := fs.getServiceLoadBalancerMode(service)
 	useSingleSLB := fs.useStandardLoadBalancer() && !fs.EnableMultipleStandardLoadBalancers
 	if !hasMode || useSingleSLB {
@@ -166,6 +169,7 @@ func (fs *FlexScaleSet) GetVMSetNames(service *v1.Service, nodes []*v1.Node) (*[
 // Different from vmas where vm name is always equal to nodeName, we need to further map vmName to actual nodeName in vmssflex.
 // Note: nodeName is always equal to strings.ToLower(*vm.OsProfile.ComputerName)
 func (fs *FlexScaleSet) GetNodeNameByProviderID(providerID string) (types.NodeName, error) {
+	klog.V(2).Infof("calling fs.GetNodeNameByProviderID(%s)", providerID)
 	// NodeName is part of providerID for standard instances.
 	matches := providerIDRE.FindStringSubmatch(providerID)
 	if len(matches) != 2 {
@@ -183,6 +187,7 @@ func (fs *FlexScaleSet) GetNodeNameByProviderID(providerID string) (types.NodeNa
 // It must return ("", cloudprovider.InstanceNotFound) if the instance does
 // not exist or is no longer running.
 func (fs *FlexScaleSet) GetInstanceIDByNodeName(name string) (string, error) {
+	klog.V(2).Infof("calling fs.GetInstanceIDByNodeName(%s)", name)
 	machine, err := fs.getVmssFlexVM(name, azcache.CacheReadTypeUnsafe)
 	if err != nil {
 		return "", err
@@ -202,6 +207,7 @@ func (fs *FlexScaleSet) GetInstanceIDByNodeName(name string) (string, error) {
 
 // GetInstanceTypeByNodeName gets the instance type by node name.
 func (fs *FlexScaleSet) GetInstanceTypeByNodeName(name string) (string, error) {
+	klog.V(2).Infof("calling fs.GetInstanceTypeByNodeName(%s)", name)
 	machine, err := fs.getVmssFlexVM(name, azcache.CacheReadTypeUnsafe)
 	if err != nil {
 		klog.Errorf("fs.GetInstanceTypeByNodeName(%s) failed: fs.getVmssFlexVMWithoutInstanceView(%s) err=%v", name, name, err)
@@ -218,6 +224,7 @@ func (fs *FlexScaleSet) GetInstanceTypeByNodeName(name string) (string, error) {
 // with availability zone, then it returns fault domain.
 // for details, refer to https://kubernetes-sigs.github.io/cloud-provider-azure/topics/availability-zones/#node-labels
 func (fs *FlexScaleSet) GetZoneByNodeName(name string) (cloudprovider.Zone, error) {
+	klog.V(2).Infof("calling fs.GetZoneByNodeName(%s)", name)
 	vm, err := fs.getVmssFlexVM(name, azcache.CacheReadTypeUnsafe)
 	if err != nil {
 		klog.Errorf("fs.GetZoneByNodeName(%s) failed: fs.getVmssFlexVMWithoutInstanceView(%s) err=%v", name, name, err)
@@ -252,6 +259,7 @@ func (fs *FlexScaleSet) GetZoneByNodeName(name string) (cloudprovider.Zone, erro
 
 // GetProvisioningStateByNodeName returns the provisioningState for the specified node.
 func (fs *FlexScaleSet) GetProvisioningStateByNodeName(name string) (provisioningState string, err error) {
+	klog.V(2).Infof("calling fs.GetProvisioningStateByNodeName(%s)", name)
 	vm, err := fs.getVmssFlexVM(name, azcache.CacheReadTypeDefault)
 	if err != nil {
 		return provisioningState, err
@@ -266,6 +274,7 @@ func (fs *FlexScaleSet) GetProvisioningStateByNodeName(name string) (provisionin
 
 // GetPowerStatusByNodeName returns the powerState for the specified node.
 func (fs *FlexScaleSet) GetPowerStatusByNodeName(name string) (powerState string, err error) {
+	klog.V(2).Infof("calling fs.GetPowerStatusByNodeName(%s)", name)
 	vm, err := fs.getVmssFlexVM(name, azcache.CacheReadTypeDefault)
 	if err != nil {
 		return powerState, err
@@ -323,6 +332,7 @@ func (fs *FlexScaleSet) GetPrimaryInterface(nodeName string) (network.Interface,
 
 // GetIPByNodeName gets machine private IP and public IP by node name.
 func (fs *FlexScaleSet) GetIPByNodeName(name string) (string, string, error) {
+	klog.V(2).Infof("calling fs.GetIPByNodeName(%s)", name)
 	nic, err := fs.GetPrimaryInterface(name)
 	if err != nil {
 		return "", "", err
@@ -359,6 +369,7 @@ func (fs *FlexScaleSet) GetIPByNodeName(name string) (string, string, error) {
 // TODO (khenidak): This should read all nics, not just the primary
 // allowing users to split ipv4/v6 on multiple nics
 func (fs *FlexScaleSet) GetPrivateIPsByNodeName(name string) ([]string, error) {
+	klog.V(2).Infof("calling fs.GetPrivateIPsByNodeName(%s)", name)
 	ips := make([]string, 0)
 	nic, err := fs.GetPrimaryInterface(name)
 	if err != nil {
@@ -380,6 +391,7 @@ func (fs *FlexScaleSet) GetPrivateIPsByNodeName(name string) ([]string, error) {
 
 // GetNodeNameByIPConfigurationID gets the nodeName and vmSetName by IP configuration ID.
 func (fs *FlexScaleSet) GetNodeNameByIPConfigurationID(ipConfigurationID string) (string, string, error) {
+	klog.V(2).Infof("calling fs.GetNodeNameByIPConfigurationID(%s)", ipConfigurationID)
 	nodeName, vmssFlexName, _, err := fs.getNodeInformationByIPConfigurationID(ipConfigurationID)
 	if err != nil {
 		klog.Errorf("fs.GetNodeNameByIPConfigurationID(%s) failed. Error: %v", ipConfigurationID, err)
@@ -463,6 +475,7 @@ func (fs *FlexScaleSet) getNodeInfoByIPConfigurationID(ipConfigurationID string)
 
 // GetNodeCIDRMaskByProviderID returns the node CIDR subnet mask by provider ID.
 func (fs *FlexScaleSet) GetNodeCIDRMasksByProviderID(providerID string) (int, int, error) {
+	klog.V(2).Infof("calling fs.GetNodeCIDRMasksByProviderID(%s)", providerID)
 	nodeNameWrapper, err := fs.GetNodeNameByProviderID(providerID)
 	if err != nil {
 		klog.Errorf("Unable to get the vmss flex vm node name by providerID %s: %v", providerID, err)
@@ -499,6 +512,7 @@ func (fs *FlexScaleSet) GetNodeCIDRMasksByProviderID(providerID string) (int, in
 // EnsureHostInPool ensures the given VM's Primary NIC's Primary IP Configuration is
 // participating in the specified LoadBalancer Backend Pool, which returns (resourceGroup, vmasName, instanceID, vmssVM, error).
 func (fs *FlexScaleSet) EnsureHostInPool(service *v1.Service, nodeName types.NodeName, backendPoolID string, vmSetNameOfLB string) (string, string, string, *compute.VirtualMachineScaleSetVM, error) {
+	klog.V(2).Infof("calling fs.EnsureHostInPool(%q, %q, %s, %s)", service, nodeName, backendPoolID, vmSetNameOfLB)
 	serviceName := getServiceName(service)
 	name := mapNodeNameToVMName(nodeName)
 	vmssFlexName, err := fs.getNodeVmssFlexName(name)
@@ -782,6 +796,7 @@ func (fs *FlexScaleSet) ensureVMSSFlexInPool(service *v1.Service, nodes []*v1.No
 // EnsureHostsInPool ensures the given Node's primary IP configurations are
 // participating in the specified LoadBalancer Backend Pool.
 func (fs *FlexScaleSet) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node, backendPoolID string, vmSetNameOfLB string) error {
+	klog.V(2).Infof("calling fs.EnsureHostsInPool(%q, %q, %s, %s)", service, nodes, backendPoolID, vmSetNameOfLB)
 	mc := metrics.NewMetricContext("services", "vmssflex_ensure_hosts_in_pool", fs.ResourceGroup, fs.SubscriptionID, getServiceName(service))
 	isOperationSucceeded := false
 	defer func() {
@@ -832,6 +847,7 @@ func (fs *FlexScaleSet) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node,
 
 //EnsureBackendPoolDeletedFromVMSets ensures the loadBalancer backendAddressPools deleted from the specified VMSS Flex
 func (fs *FlexScaleSet) EnsureBackendPoolDeletedFromVMSets(vmssNamesMap map[string]bool, backendPoolID string) error {
+	klog.V(2).Infof("calling fs.EnsureBackendPoolDeletedFromVMSets(%q, %q)", vmssNamesMap, backendPoolID)
 	vmssUpdaters := make([]func() error, 0, len(vmssNamesMap))
 	errors := make([]error, 0, len(vmssNamesMap))
 	for vmssName := range vmssNamesMap {
@@ -924,6 +940,7 @@ func (fs *FlexScaleSet) EnsureBackendPoolDeletedFromVMSets(vmssNamesMap map[stri
 
 // EnsureBackendPoolDeleted ensures the loadBalancer backendAddressPools deleted from the specified nodes.
 func (fs *FlexScaleSet) EnsureBackendPoolDeleted(service *v1.Service, backendPoolID, vmSetName string, backendAddressPools *[]network.BackendAddressPool, deleteFromVMSet bool) error {
+	klog.V(2).Infof("calling fs.EnsureBackendPoolDeleted(%q, %s, %s, %q)", service, backendPoolID, vmSetName, backendAddressPools)
 	// Returns nil if backend address pools already deleted.
 	if backendAddressPools == nil {
 		return nil
@@ -1010,6 +1027,7 @@ func (fs *FlexScaleSet) EnsureBackendPoolDeleted(service *v1.Service, backendPoo
 }
 
 func (fs *FlexScaleSet) ensureBackendPoolDeletedFromNode(vmssFlexVMNameMap map[string]string, backendPoolID string) error {
+	klog.V(2).Infof("calling fs.ensureBackendPoolDeletedFromNode(%q, %s)", vmssFlexVMNameMap, backendPoolID)
 	nicUpdaters := make([]func() error, 0)
 	allErrs := make([]error, 0)
 	i := 0
