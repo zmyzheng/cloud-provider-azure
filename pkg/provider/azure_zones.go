@@ -142,6 +142,7 @@ func (az *Cloud) GetZoneID(zoneLabel string) string {
 // GetZone returns the Zone containing the current availability zone and locality region that the program is running in.
 // If the node is not running with availability zones, then it will fall back to fault domain.
 func (az *Cloud) GetZone(ctx context.Context) (cloudprovider.Zone, error) {
+	klog.V(2).Infof("calling az.GetZone")
 	if az.UseInstanceMetadata {
 		metadata, err := az.Metadata.GetMetadata(azcache.CacheReadTypeUnsafe)
 		if err != nil {
@@ -183,6 +184,7 @@ func (az *Cloud) GetZone(ctx context.Context) (cloudprovider.Zone, error) {
 // This is particularly useful in external cloud providers where the kubelet
 // does not initialize node data.
 func (az *Cloud) GetZoneByProviderID(ctx context.Context, providerID string) (cloudprovider.Zone, error) {
+	klog.V(2).Infof("calling az.GetZoneByProviderID(%s)", providerID)
 	if providerID == "" {
 		return cloudprovider.Zone{}, errNodeNotInitialized
 	}
@@ -205,6 +207,7 @@ func (az *Cloud) GetZoneByProviderID(ctx context.Context, providerID string) (cl
 // This is particularly useful in external cloud providers where the kubelet
 // does not initialize node data.
 func (az *Cloud) GetZoneByNodeName(ctx context.Context, nodeName types.NodeName) (cloudprovider.Zone, error) {
+	klog.V(2).Infof("calling az.GetGetZoneByNodeNameZone(%s)", nodeName)
 	// Returns "" for unmanaged nodes because azure cloud provider couldn't fetch information for them.
 	unmanaged, err := az.IsNodeUnmanaged(string(nodeName))
 	if err != nil {
