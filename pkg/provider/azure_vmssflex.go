@@ -962,6 +962,7 @@ func (fs *FlexScaleSet) EnsureBackendPoolDeletedFromVMSets(vmssNamesMap map[stri
 // EnsureBackendPoolDeleted ensures the loadBalancer backendAddressPools deleted from the specified nodes.
 func (fs *FlexScaleSet) EnsureBackendPoolDeleted(service *v1.Service, backendPoolID, vmSetName string, backendAddressPools *[]network.BackendAddressPool, deleteFromVMSet bool) error {
 	klog.V(2).Infof("calling fs.EnsureBackendPoolDeleted(%q, %s, %s, %q)", service, backendPoolID, vmSetName, backendAddressPools)
+
 	// Returns nil if backend address pools already deleted.
 	if backendAddressPools == nil {
 		return nil
@@ -1012,7 +1013,7 @@ func (fs *FlexScaleSet) EnsureBackendPoolDeleted(service *v1.Service, backendPoo
 					vmssFlexNamesMap[vmSetName] = true
 					vmssFlexVMNameMap[nodeName] = nicName
 				} else {
-					// Only remove nodes belonging to specified vmSet to basic LB backends.
+					// Only remove nodes belonging to specified vmSet.
 					continue
 				}
 			}
