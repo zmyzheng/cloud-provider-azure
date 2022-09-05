@@ -301,7 +301,7 @@ func (fs *FlexScaleSet) GetPowerStatusByNodeName(name string) (powerState string
 	}
 
 	// vm.InstanceView or vm.InstanceView.Statuses are nil when the VM is under deleting.
-	klog.V(3).Infof("InstanceView for node %q is nil, assuming it's stopped", name)
+	klog.V(2).Infof("InstanceView for node %q is nil, assuming it's stopped", name)
 	return vmPowerStateStopped, nil
 }
 
