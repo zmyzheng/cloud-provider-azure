@@ -182,6 +182,7 @@ func (fs *FlexScaleSet) GetNodeNameByProviderID(providerID string) (types.NodeNa
 		klog.Errorf("fs.getNodeNameByVMName failed with error: %v", err)
 		return "", err
 	}
+	klog.V(2).Infof(" fs.GetNodeNameByProviderID returns %s", nodeName)
 	return types.NodeName(nodeName), nil
 }
 
@@ -205,6 +206,7 @@ func (fs *FlexScaleSet) GetInstanceIDByNodeName(name string) (string, error) {
 		klog.Errorf("ConvertResourceGroupNameToLower failed with error: %v", err)
 		return "", err
 	}
+	klog.V(2).Infof(" fs.GetInstanceIDByNodeName returns %s", convertedResourceID)
 	return convertedResourceID, nil
 
 }
@@ -222,6 +224,7 @@ func (fs *FlexScaleSet) GetInstanceTypeByNodeName(name string) (string, error) {
 		klog.Errorf("HardwareProfile of node(%s) is nil", name)
 		return "", fmt.Errorf("HardwareProfile of node(%s) is nil", name)
 	}
+	klog.V(2).Infof(" fs.GetInstanceTypeByNodeName returns %s", string(machine.HardwareProfile.VMSize))
 	return string(machine.HardwareProfile.VMSize), nil
 }
 
@@ -277,7 +280,7 @@ func (fs *FlexScaleSet) GetProvisioningStateByNodeName(name string) (provisionin
 	if vm.VirtualMachineProperties == nil || vm.VirtualMachineProperties.ProvisioningState == nil {
 		return provisioningState, nil
 	}
-
+	klog.V(2).Infof(" fs.GetProvisioningStateByNodeName returns %s", to.String(vm.VirtualMachineProperties.ProvisioningState))
 	return to.String(vm.VirtualMachineProperties.ProvisioningState), nil
 }
 
@@ -295,6 +298,7 @@ func (fs *FlexScaleSet) GetPowerStatusByNodeName(name string) (powerState string
 		for _, status := range statuses {
 			state := to.String(status.Code)
 			if strings.HasPrefix(state, vmPowerStatePrefix) {
+				klog.V(2).Infof(" fs.GetPowerStatusByNodeName returns %s", strings.TrimPrefix(state, vmPowerStatePrefix))
 				return strings.TrimPrefix(state, vmPowerStatePrefix), nil
 			}
 		}
@@ -338,7 +342,7 @@ func (fs *FlexScaleSet) GetPrimaryInterface(nodeName string) (network.Interface,
 		klog.Errorf("fs.InterfacesClient.Get failed with error: %v", rerr)
 		return network.Interface{}, rerr.Error()
 	}
-
+	klog.V(2).Infof(" fs.GetPrimaryInterface returns %q", nic)
 	return nic, nil
 }
 
@@ -377,7 +381,7 @@ func (fs *FlexScaleSet) GetIPByNodeName(name string) (string, string, error) {
 			publicIP = *pip.IPAddress
 		}
 	}
-
+	klog.V(2).Infof(" fs.GetIPByNodeName returns %s, %s", privateIP, publicIP)
 	return privateIP, publicIP, nil
 
 }
@@ -404,7 +408,7 @@ func (fs *FlexScaleSet) GetPrivateIPsByNodeName(name string) ([]string, error) {
 			ips = append(ips, *(ipConfig.PrivateIPAddress))
 		}
 	}
-
+	klog.V(2).Infof(" fs.GetPrivateIPsByNodeName returns %s", ips)
 	return ips, nil
 }
 
@@ -416,7 +420,7 @@ func (fs *FlexScaleSet) GetNodeNameByIPConfigurationID(ipConfigurationID string)
 		klog.Errorf("fs.GetNodeNameByIPConfigurationID(%s) failed. Error: %v", ipConfigurationID, err)
 		return "", "", err
 	}
-
+	klog.V(2).Infof(" fs.GetNodeNameByIPConfigurationID returns %s, %s", nodeName, strings.ToLower(vmssFlexName))
 	return nodeName, strings.ToLower(vmssFlexName), nil
 }
 
@@ -525,7 +529,7 @@ func (fs *FlexScaleSet) GetNodeCIDRMasksByProviderID(providerID string) (int, in
 			klog.Errorf("GetNodeCIDRMasksByProviderID: error when paring the value of the ipv6 mask size%s: %v", to.String(v6), err)
 		}
 	}
-
+	klog.V(2).Infof(" fs.GetNodeCIDRMasksByProviderID returns %s, %s", ipv4Mask, ipv6Mask)
 	return ipv4Mask, ipv6Mask, nil
 }
 
