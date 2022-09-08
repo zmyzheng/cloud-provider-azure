@@ -79,8 +79,7 @@ type ScaleSet struct {
 	vmssCache   *azcache.TimedCache
 	vmssVMCache *sync.Map // [resourcegroup/vmssname]*azcache.TimedCache
 
-	availabilitySetNodesCache *azcache.TimedCache
-	nonVmssUniformNodesCache  *azcache.TimedCache
+	nonVmssUniformNodesCache *azcache.TimedCache
 
 	// lockMap in cache refresh
 	lockMap *lockMap
@@ -111,10 +110,6 @@ func newScaleSet(az *Cloud) (VMSet, error) {
 	}
 
 	if !ss.DisableAvailabilitySetNodes {
-		ss.availabilitySetNodesCache, err = ss.newAvailabilitySetNodesCache()
-		if err != nil {
-			return nil, err
-		}
 		ss.nonVmssUniformNodesCache, err = ss.newNonVmssUniformNodesCache()
 		if err != nil {
 			return nil, err
