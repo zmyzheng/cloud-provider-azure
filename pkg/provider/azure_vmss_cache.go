@@ -18,7 +18,6 @@ package provider
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -32,11 +31,6 @@ import (
 
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
-)
-
-var (
-	// ErrorManagedByUnknown indicates an instance management type is unknown.
-	ErrorManagedByUnknown = errors.New("vm management type unknown")
 )
 
 type vmssVirtualMachinesEntry struct {
@@ -64,10 +58,10 @@ type nonVmssUniformNodesEntry struct {
 type VMManagementType string
 
 const (
-	ManagedByVmssUniform VMManagementType = "ManagedByVmssUniform"
-	ManagedByVmssFlex    VMManagementType = "ManagedByVmssFlex"
-	ManagedByAvSet       VMManagementType = "ManagedByAvSet"
-	ManagedByUnknown     VMManagementType = "ManagedByUnknown"
+	ManagedByVmssUniform  VMManagementType = "ManagedByVmssUniform"
+	ManagedByVmssFlex     VMManagementType = "ManagedByVmssFlex"
+	ManagedByAvSet        VMManagementType = "ManagedByAvSet"
+	ManagedByUnknownVMSet VMManagementType = "ManagedByUnknownVMSet"
 )
 
 func (ss *ScaleSet) newVMSSCache() (*azcache.TimedCache, error) {
@@ -378,7 +372,7 @@ func (ss *ScaleSet) getVMManagementTypeByNodeName(nodeName string, crt azcache.A
 	defer ss.lockMap.UnlockEntry(consts.VMManagementTypeLockKey)
 	cached, err := ss.nonVmssUniformNodesCache.Get(consts.NonVmssUniformNodesKey, crt)
 	if err != nil {
-		return ManagedByUnknown, err
+		return ManagedByUnknownVMSet, err
 	}
 
 	cachedNodes := cached.(nonVmssUniformNodesEntry).clusterNodeNames
@@ -388,7 +382,7 @@ func (ss *ScaleSet) getVMManagementTypeByNodeName(nodeName string, crt azcache.A
 		klog.V(2).Infof("Node %s has joined the cluster since the last VM cache refresh in nonVmssUniformNodesEntry, refreshing the cache", nodeName)
 		cached, err = ss.nonVmssUniformNodesCache.Get(consts.NonVmssUniformNodesKey, azcache.CacheReadTypeForceRefresh)
 		if err != nil {
-			return ManagedByUnknown, err
+			return ManagedByUnknownVMSet, err
 		}
 	}
 
@@ -402,7 +396,6 @@ func (ss *ScaleSet) getVMManagementTypeByNodeName(nodeName string, crt azcache.A
 		return ManagedByVmssFlex, nil
 	}
 	return ManagedByVmssUniform, nil
-
 }
 
 func (ss *ScaleSet) getVMManagementTypeByProviderID(providerID string, crt azcache.AzureCacheReadType) (VMManagementType, error) {
@@ -418,7 +411,7 @@ func (ss *ScaleSet) getVMManagementTypeByProviderID(providerID string, crt azcac
 	defer ss.lockMap.UnlockEntry(consts.VMManagementTypeLockKey)
 	cached, err := ss.nonVmssUniformNodesCache.Get(consts.NonVmssUniformNodesKey, crt)
 	if err != nil {
-		return ManagedByUnknown, err
+		return ManagedByUnknownVMSet, err
 	}
 
 	cachedVmssFlexVMProviderIDs := cached.(nonVmssUniformNodesEntry).vmssFlexVMProviderIDs
@@ -430,7 +423,7 @@ func (ss *ScaleSet) getVMManagementTypeByProviderID(providerID string, crt azcac
 	if cachedVmssFlexVMProviderIDs.Has(providerID) {
 		return ManagedByVmssFlex, nil
 	}
-	return ManagedByUnknown, fmt.Errorf("getVMManagementTypeByProviderID : failed to check the providerID %s management type", providerID)
+	return ManagedByUnknownVMSet, fmt.Errorf("getVMManagementTypeByProviderID : failed to check the providerID %s management type", providerID)
 
 }
 
@@ -448,17 +441,17 @@ func (ss *ScaleSet) getVMManagementTypeByIPConfigurationID(ipConfigurationID str
 	defer ss.lockMap.UnlockEntry(consts.VMManagementTypeLockKey)
 	cached, err := ss.nonVmssUniformNodesCache.Get(consts.NonVmssUniformNodesKey, crt)
 	if err != nil {
-		return ManagedByUnknown, err
+		return ManagedByUnknownVMSet, err
 	}
 
 	matches := nicIDRE.FindStringSubmatch(ipConfigurationID)
 	if len(matches) != 3 {
-		return ManagedByUnknown, fmt.Errorf("can not extract nic name from ipConfigurationID (%s)", ipConfigurationID)
+		return ManagedByUnknownVMSet, fmt.Errorf("can not extract nic name from ipConfigurationID (%s)", ipConfigurationID)
 	}
 
 	nicResourceGroup, nicName := matches[1], matches[2]
 	if nicResourceGroup == "" || nicName == "" {
-		return ManagedByUnknown, fmt.Errorf("invalid ip config ID %s", ipConfigurationID)
+		return ManagedByUnknownVMSet, fmt.Errorf("invalid ip config ID %s", ipConfigurationID)
 	}
 
 	vmName := strings.Replace(nicName, "-nic", "", 1)
