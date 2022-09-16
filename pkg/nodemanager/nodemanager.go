@@ -438,7 +438,13 @@ func (cnc *CloudNodeController) getNodeModifiersFromCloudProvider(ctx context.Co
 		if err == nil {
 			nodeModifiers = append(nodeModifiers, func(n *v1.Node) {
 				if n.Spec.ProviderID == "" {
-					n.Spec.ProviderID = providerID
+					// Transform providerID format for VMSS Flex
+					s := strings.Split(providerID, "/")
+					elems := s[:len(s)-4]
+					elems = append(elems, s[len(s)-2])
+					elems = append(elems, s[len(s)-3]+"_"+s[len(s)-1])
+
+					n.Spec.ProviderID = strings.Join(elems, "/")
 				}
 			})
 		} else {
