@@ -30,6 +30,7 @@ import (
 
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure"
+	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/stretchr/testify/assert"
 
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
@@ -73,21 +74,30 @@ func TestSend(t *testing.T) {
 	assert.Equal(t, 2, count)
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 }
-func TestSendFailureRegionalRetry(t *testing.T) {
+func TestDoHackRegionalRetryForGET(t *testing.T) {
 	testcases := []struct {
-		description        string
-		globalServerErrMsg string
-		globalServerCode   int
+		description               string
+		globalServerErrMsg        string
+		globalServerCode          int
+		globalServerContentLength *string
 	}{
 		{
 			"RegionalRetry",
 			"{\"error\":{\"code\":\"ResourceGroupNotFound\"}}",
 			http.StatusInternalServerError,
+			to.StringPtr("100"),
 		},
 		{
-			"ReplicationLatency",
+			"ReplicationLatency-Content-Length-0",
 			"{}",
 			http.StatusOK,
+			to.StringPtr("0"),
+		},
+		{
+			"ReplicationLatency-Content-Length-minus-1",
+			"{}",
+			http.StatusOK,
+			to.StringPtr("-1"),
 		},
 	}
 
@@ -96,35 +106,27 @@ func TestSendFailureRegionalRetry(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "GET", r.Method)
 				w.WriteHeader(http.StatusOK)
-				_, err := w.Write([]byte("{}"))
+				_, err := w.Write([]byte("{\"a\": \"b\"}"))
 				assert.NoError(t, err)
 			}))
 
 			globalServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tc.globalServerContentLength != nil {
+					w.Header().Set("Content-Length", *tc.globalServerContentLength)
+				}
 				http.Error(w, tc.globalServerErrMsg, tc.globalServerCode)
 			}))
 			azConfig := azureclients.ClientConfig{Backoff: &retry.Backoff{Steps: 3}, UserAgent: "test", Location: "eastus"}
 			armClient := New(nil, azConfig, server.URL, "2019-01-01")
 			targetURL, _ := url.Parse(server.URL)
 			armClient.regionalEndpoint = targetURL.Host
-			pathParameters := map[string]interface{}{
-				"resourceGroupName": autorest.Encode("path", "testgroup"),
-				"subscriptionId":    autorest.Encode("path", "testid"),
-				"resourceName":      autorest.Encode("path", "testname"),
-			}
+			armClient.baseURI = globalServer.URL
 
-			decorators := []autorest.PrepareDecorator{
-				autorest.WithPathParameters(
-					"/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.Network/vNets/{resourceName}", pathParameters),
-				autorest.WithBaseURL(globalServer.URL),
-			}
-
+			resourceID := "/subscriptions/testid/resourceGroups/restgroup/providers/Microsoft.Network/vNets/testname"
 			ctx := context.Background()
-			request, err := armClient.PrepareGetRequest(ctx, decorators...)
-			assert.NoError(t, err)
-
-			response, rerr := armClient.Send(ctx, request)
+			response, rerr := armClient.GetResource(ctx, resourceID)
 			assert.Nil(t, rerr)
+			assert.NotNil(t, response)
 			assert.Equal(t, http.StatusOK, response.StatusCode)
 			assert.Equal(t, targetURL.Host, response.Request.URL.Host)
 		})

@@ -1870,11 +1870,13 @@ func TestEnsureHostInPool(t *testing.T) {
 		isBasicLB                 bool
 		isNilVMNetworkConfigs     bool
 		useMultipleSLBs           bool
+		isVMBeingDeleted          bool
 		expectedNodeResourceGroup string
 		expectedVMSSName          string
 		expectedInstanceID        string
 		expectedVMSSVM            *compute.VirtualMachineScaleSetVM
 		expectedErr               error
+		vmssVMListError           *retry.Error
 	}{
 		{
 			description: "EnsureHostInPool should skip the current node if the vmSetName is not equal to the node's vmss name and the basic LB is used",
@@ -1908,6 +1910,11 @@ func TestEnsureHostInPool(t *testing.T) {
 			vmSetName:     "vmss",
 			backendPoolID: "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/loadBalancers/lb1-internal/backendAddressPools/backendpool-1",
 			isBasicLB:     false,
+		},
+		{
+			description:      "EnsureHostInPool should skip the current node if it is being deleted",
+			nodeName:         "vmss-vm-000000",
+			isVMBeingDeleted: true,
 		},
 		{
 			description:               "EnsureHostInPool should add a new backend pool to the vm",
@@ -1969,12 +1976,29 @@ func TestEnsureHostInPool(t *testing.T) {
 		mockVMSSClient := ss.cloud.VirtualMachineScaleSetsClient.(*mockvmssclient.MockInterface)
 		mockVMSSClient.EXPECT().List(gomock.Any(), ss.ResourceGroup).Return([]compute.VirtualMachineScaleSet{expectedVMSS}, nil).AnyTimes()
 
-		expectedVMSSVMs, _, _ := buildTestVirtualMachineEnv(ss.cloud, testVMSSName, "", 0, []string{string(test.nodeName)}, "", false)
+		provisionState := ""
+		if test.isVMBeingDeleted {
+			provisionState = "Deleting"
+		}
+		expectedVMSSVMs, _, _ := buildTestVirtualMachineEnv(
+			ss.cloud,
+			testVMSSName,
+			"",
+			0,
+			[]string{string(test.nodeName)},
+			provisionState,
+			false,
+		)
 		if test.isNilVMNetworkConfigs {
 			expectedVMSSVMs[0].NetworkProfileConfiguration.NetworkInterfaceConfigurations = nil
 		}
 		mockVMSSVMClient := ss.cloud.VirtualMachineScaleSetVMsClient.(*mockvmssvmclient.MockInterface)
-		mockVMSSVMClient.EXPECT().List(gomock.Any(), ss.ResourceGroup, testVMSSName, gomock.Any()).Return(expectedVMSSVMs, nil).AnyTimes()
+		mockVMSSVMClient.EXPECT().List(
+			gomock.Any(),
+			ss.ResourceGroup,
+			testVMSSName,
+			gomock.Any(),
+		).Return(expectedVMSSVMs, test.vmssVMListError).AnyTimes()
 
 		nodeResourceGroup, ssName, instanceID, vm, err := ss.EnsureHostInPool(test.service, test.nodeName, test.backendPoolID, test.vmSetName)
 		assert.Equal(t, test.expectedErr, err, test.description+", but an error occurs")
@@ -2796,4 +2820,70 @@ func TestGetNodeVMSetNameVMSS(t *testing.T) {
 	vmSetName, err = ss.GetNodeVMSetName(node)
 	assert.NoError(t, err)
 	assert.Equal(t, "vmss", vmSetName)
+}
+
+func TestScaleSet_VMSSBatchSize(t *testing.T) {
+
+	const (
+		BatchSize = 500
+	)
+
+	t.Run("failed to get vmss", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ss, err := NewTestScaleSet(ctrl)
+		assert.NoError(t, err)
+
+		var (
+			vmssName   = "foo"
+			getVMSSErr = &retry.Error{RawError: fmt.Errorf("list vmss error")}
+		)
+		mockVMSSClient := ss.Cloud.VirtualMachineScaleSetsClient.(*mockvmssclient.MockInterface)
+		mockVMSSClient.EXPECT().List(gomock.Any(), gomock.Any()).
+			Return(nil, getVMSSErr)
+
+		_, err = ss.VMSSBatchSize(vmssName)
+		assert.Error(t, err)
+	})
+
+	t.Run("vmss contains batch operation tag", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ss, err := NewTestScaleSet(ctrl)
+		assert.NoError(t, err)
+		ss.Cloud.PutVMSSVMBatchSize = BatchSize
+
+		scaleSet := compute.VirtualMachineScaleSet{
+			Name: to.StringPtr("foo"),
+			Tags: map[string]*string{
+				consts.VMSSTagForBatchOperation: to.StringPtr(""),
+			},
+		}
+		mockVMSSClient := ss.Cloud.VirtualMachineScaleSetsClient.(*mockvmssclient.MockInterface)
+		mockVMSSClient.EXPECT().List(gomock.Any(), gomock.Any()).
+			Return([]compute.VirtualMachineScaleSet{scaleSet}, nil)
+
+		batchSize, err := ss.VMSSBatchSize(to.String(scaleSet.Name))
+		assert.NoError(t, err)
+		assert.Equal(t, BatchSize, batchSize)
+	})
+
+	t.Run("vmss doesn't contain batch operation tag", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ss, err := NewTestScaleSet(ctrl)
+		assert.NoError(t, err)
+		ss.Cloud.PutVMSSVMBatchSize = BatchSize
+
+		scaleSet := compute.VirtualMachineScaleSet{
+			Name: to.StringPtr("bar"),
+		}
+		mockVMSSClient := ss.Cloud.VirtualMachineScaleSetsClient.(*mockvmssclient.MockInterface)
+		mockVMSSClient.EXPECT().List(gomock.Any(), gomock.Any()).
+			Return([]compute.VirtualMachineScaleSet{scaleSet}, nil)
+
+		batchSize, err := ss.VMSSBatchSize(to.String(scaleSet.Name))
+		assert.NoError(t, err)
+		assert.Equal(t, 0, batchSize)
+	})
 }
