@@ -54,18 +54,20 @@ type vmssEntry struct {
 }
 
 type nonVmssUniformNodesEntry struct {
-	vmssFlexVMNames  sets.String
-	avSetVMNames     sets.String
-	clusterNodeNames sets.String
+	vmssFlexVMNodeNames   sets.String
+	vmssFlexVMProviderIDs sets.String
+	avSetVMNodeNames      sets.String
+	avSetVMProviderIDs    sets.String
+	clusterNodeNames      sets.String
 }
 
 type VMManagementType string
 
 const (
-	ManagedByVmssUniform VMManagementType = "ManagedByVmssUniform"
-	ManagedByVmssFlex    VMManagementType = "ManagedByVmssFlex"
-	ManagedByAvSet       VMManagementType = "ManagedByAvSet"
-	ManagedByUnknown     VMManagementType = "ManagedByUnknown"
+	ManagedByVmssUniform  VMManagementType = "ManagedByVmssUniform"
+	ManagedByVmssFlex     VMManagementType = "ManagedByVmssFlex"
+	ManagedByAvSet        VMManagementType = "ManagedByAvSet"
+	ManagedByUnknownVMSet VMManagementType = "ManagedByUnknownVMSet"
 )
 
 func (ss *ScaleSet) newVMSSCache() (*azcache.TimedCache, error) {
@@ -96,15 +98,13 @@ func (ss *ScaleSet) newVMSSCache() (*azcache.TimedCache, error) {
 					klog.Warning("failed to get the name of VMSS")
 					continue
 				}
-				if scaleSet.OrchestrationMode == compute.OrchestrationModeFlexible {
-					klog.V(2).Infof("Skip Flexible VMSS: (%s)", *scaleSet.Name)
-					continue
+				if scaleSet.OrchestrationMode == "" || scaleSet.OrchestrationMode == compute.OrchestrationModeUniform {
+					localCache.Store(*scaleSet.Name, &vmssEntry{
+						vmss:          &scaleSet,
+						resourceGroup: resourceGroup,
+						lastUpdate:    time.Now().UTC(),
+					})
 				}
-				localCache.Store(*scaleSet.Name, &vmssEntry{
-					vmss:          &scaleSet,
-					resourceGroup: resourceGroup,
-					lastUpdate:    time.Now().UTC(),
-				})
 			}
 		}
 
@@ -285,29 +285,44 @@ func (ss *ScaleSet) newVMSSVirtualMachinesCache(resourceGroupName, vmssName, cac
 	return azcache.NewTimedcache(vmssVirtualMachinesCacheTTL, getter)
 }
 
-func (ss *ScaleSet) deleteCacheForNode(nodeName string) error {
+func (ss *ScaleSet) DeleteCacheForNode(nodeName string) error {
+	vmManagementType, err := ss.getVMManagementTypeByNodeName(nodeName, azcache.CacheReadTypeUnsafe)
+	if err != nil {
+		klog.Errorf("Failed to check VM management type: %v", err)
+		return err
+	}
+
+	if vmManagementType == ManagedByAvSet {
+		// vm is managed by availability set.
+		return ss.availabilitySet.DeleteCacheForNode(nodeName)
+	}
+	if vmManagementType == ManagedByVmssFlex {
+		// vm is managed by vmss flex.
+		return ss.flexScaleSet.DeleteCacheForNode(nodeName)
+	}
+
 	node, err := ss.getNodeIdentityByNodeName(nodeName, azcache.CacheReadTypeUnsafe)
 	if err != nil {
-		klog.Errorf("deleteCacheForNode(%s) failed with error: %v", nodeName, err)
+		klog.Errorf("DeleteCacheForNode(%s) failed with error: %v", nodeName, err)
 		return err
 	}
 
 	cacheKey, timedcache, err := ss.getVMSSVMCache(node.resourceGroup, node.vmssName)
 	if err != nil {
-		klog.Errorf("deleteCacheForNode(%s) failed with error: %v", nodeName, err)
+		klog.Errorf("DeleteCacheForNode(%s) failed with error: %v", nodeName, err)
 		return err
 	}
 
 	vmcache, err := timedcache.Get(cacheKey, azcache.CacheReadTypeUnsafe)
 	if err != nil {
-		klog.Errorf("deleteCacheForNode(%s) failed with error: %v", nodeName, err)
+		klog.Errorf("DeleteCacheForNode(%s) failed with error: %v", nodeName, err)
 		return err
 	}
 	virtualMachines := vmcache.(*sync.Map)
 	virtualMachines.Delete(nodeName)
 
 	if err := ss.gcVMSSVMCache(); err != nil {
-		klog.Errorf("deleteCacheForNode(%s) failed to gc stale vmss caches: %v", nodeName, err)
+		klog.Errorf("DeleteCacheForNode(%s) failed to gc stale vmss caches: %v", nodeName, err)
 	}
 
 	return nil
@@ -315,9 +330,11 @@ func (ss *ScaleSet) deleteCacheForNode(nodeName string) error {
 
 func (ss *ScaleSet) newNonVmssUniformNodesCache() (*azcache.TimedCache, error) {
 	getter := func(key string) (interface{}, error) {
-		klog.V(2).Infof("calling getter function of newNonVmssUniformNodesCache with key: %s", key)
-		vmssFlexVMNames := sets.NewString()
-		avSetVMNames := sets.NewString()
+		klog.V(6).Infof("refresh the cache of NonVmssUniformNodesCache")
+		vmssFlexVMNodeNames := sets.NewString()
+		vmssFlexVMProviderIDs := sets.NewString()
+		avSetVMNodeNames := sets.NewString()
+		avSetVMProviderIDs := sets.NewString()
 		resourceGroups, err := ss.GetResourceGroups()
 		if err != nil {
 			return nil, err
@@ -326,14 +343,20 @@ func (ss *ScaleSet) newNonVmssUniformNodesCache() (*azcache.TimedCache, error) {
 		for _, resourceGroup := range resourceGroups.List() {
 			vms, err := ss.Cloud.ListVirtualMachines(resourceGroup)
 			if err != nil {
-				return nil, fmt.Errorf("getter function of onVmssUniformNodesCache: failed to list vms in the resource group %s: %w", resourceGroup, err)
+				return nil, fmt.Errorf("getter function of nonVmssUniformNodesCache: failed to list vms in the resource group %s: %w", resourceGroup, err)
 			}
 			for _, vm := range vms {
 				if vm.OsProfile != nil && vm.OsProfile.ComputerName != nil {
 					if vm.VirtualMachineScaleSet != nil {
-						vmssFlexVMNames.Insert(strings.ToLower(to.String(vm.OsProfile.ComputerName)))
+						vmssFlexVMNodeNames.Insert(strings.ToLower(to.String(vm.OsProfile.ComputerName)))
+						if vm.ID != nil {
+							vmssFlexVMProviderIDs.Insert(ss.ProviderName() + "://" + to.String(vm.ID))
+						}
 					} else {
-						avSetVMNames.Insert(strings.ToLower(to.String(vm.OsProfile.ComputerName)))
+						avSetVMNodeNames.Insert(strings.ToLower(to.String(vm.OsProfile.ComputerName)))
+						if vm.ID != nil {
+							avSetVMProviderIDs.Insert(ss.ProviderName() + "://" + to.String(vm.ID))
+						}
 					}
 				}
 			}
@@ -346,9 +369,11 @@ func (ss *ScaleSet) newNonVmssUniformNodesCache() (*azcache.TimedCache, error) {
 		}
 
 		localCache := nonVmssUniformNodesEntry{
-			vmssFlexVMNames:  vmssFlexVMNames,
-			avSetVMNames:     avSetVMNames,
-			clusterNodeNames: nodeNames,
+			vmssFlexVMNodeNames:   vmssFlexVMNodeNames,
+			vmssFlexVMProviderIDs: vmssFlexVMProviderIDs,
+			avSetVMNodeNames:      avSetVMNodeNames,
+			avSetVMProviderIDs:    avSetVMProviderIDs,
+			clusterNodeNames:      nodeNames,
 		}
 
 		return localCache, nil
@@ -360,13 +385,15 @@ func (ss *ScaleSet) newNonVmssUniformNodesCache() (*azcache.TimedCache, error) {
 	return azcache.NewTimedcache(time.Duration(ss.Config.NonVmssUniformNodesCacheTTLInSeconds)*time.Second, getter)
 }
 
-func (ss *ScaleSet) getVMManagementType(nodeName string, crt azcache.AzureCacheReadType) (VMManagementType, error) {
-	ss.lockMap.LockEntry("getVMManagementType")
-	defer ss.lockMap.UnlockEntry("getVMManagementType")
-	klog.V(2).Infof("calling getVMManagementType(%s)", nodeName)
+func (ss *ScaleSet) getVMManagementTypeByNodeName(nodeName string, crt azcache.AzureCacheReadType) (VMManagementType, error) {
+	if ss.DisableAvailabilitySetNodes && !ss.EnableVmssFlexNodes {
+		return ManagedByVmssUniform, nil
+	}
+	ss.lockMap.LockEntry(consts.VMManagementTypeLockKey)
+	defer ss.lockMap.UnlockEntry(consts.VMManagementTypeLockKey)
 	cached, err := ss.nonVmssUniformNodesCache.Get(consts.NonVmssUniformNodesKey, crt)
 	if err != nil {
-		return ManagedByUnknown, err
+		return ManagedByUnknownVMSet, err
 	}
 
 	cachedNodes := cached.(nonVmssUniformNodesEntry).clusterNodeNames
@@ -376,18 +403,84 @@ func (ss *ScaleSet) getVMManagementType(nodeName string, crt azcache.AzureCacheR
 		klog.V(2).Infof("Node %s has joined the cluster since the last VM cache refresh in nonVmssUniformNodesEntry, refreshing the cache", nodeName)
 		cached, err = ss.nonVmssUniformNodesCache.Get(consts.NonVmssUniformNodesKey, azcache.CacheReadTypeForceRefresh)
 		if err != nil {
-			return ManagedByUnknown, err
+			return ManagedByUnknownVMSet, err
 		}
 	}
 
-	cachedAvSetVMs := cached.(nonVmssUniformNodesEntry).avSetVMNames
-	cachedVmssFlexVMs := cached.(nonVmssUniformNodesEntry).vmssFlexVMNames
+	cachedAvSetVMs := cached.(nonVmssUniformNodesEntry).avSetVMNodeNames
+	cachedVmssFlexVMs := cached.(nonVmssUniformNodesEntry).vmssFlexVMNodeNames
 
 	if cachedAvSetVMs.Has(nodeName) {
 		return ManagedByAvSet, nil
-	} else if cachedVmssFlexVMs.Has(nodeName) {
+	}
+	if cachedVmssFlexVMs.Has(nodeName) {
 		return ManagedByVmssFlex, nil
-	} else {
+	}
+	return ManagedByVmssUniform, nil
+}
+
+func (ss *ScaleSet) getVMManagementTypeByProviderID(providerID string, crt azcache.AzureCacheReadType) (VMManagementType, error) {
+	if ss.DisableAvailabilitySetNodes && !ss.EnableVmssFlexNodes {
 		return ManagedByVmssUniform, nil
 	}
+	_, err := extractScaleSetNameByProviderID(providerID)
+	if err == nil {
+		return ManagedByVmssUniform, nil
+	}
+
+	ss.lockMap.LockEntry(consts.VMManagementTypeLockKey)
+	defer ss.lockMap.UnlockEntry(consts.VMManagementTypeLockKey)
+	cached, err := ss.nonVmssUniformNodesCache.Get(consts.NonVmssUniformNodesKey, crt)
+	if err != nil {
+		return ManagedByUnknownVMSet, err
+	}
+
+	cachedVmssFlexVMProviderIDs := cached.(nonVmssUniformNodesEntry).vmssFlexVMProviderIDs
+	cachedAvSetVMProviderIDs := cached.(nonVmssUniformNodesEntry).avSetVMProviderIDs
+
+	if cachedAvSetVMProviderIDs.Has(providerID) {
+		return ManagedByAvSet, nil
+	}
+	if cachedVmssFlexVMProviderIDs.Has(providerID) {
+		return ManagedByVmssFlex, nil
+	}
+	return ManagedByUnknownVMSet, fmt.Errorf("getVMManagementTypeByProviderID : failed to check the providerID %s management type", providerID)
+
+}
+
+func (ss *ScaleSet) getVMManagementTypeByIPConfigurationID(ipConfigurationID string, crt azcache.AzureCacheReadType) (VMManagementType, error) {
+	if ss.DisableAvailabilitySetNodes && !ss.EnableVmssFlexNodes {
+		return ManagedByVmssUniform, nil
+	}
+
+	_, _, err := getScaleSetAndResourceGroupNameByIPConfigurationID(ipConfigurationID)
+	if err == nil {
+		return ManagedByVmssUniform, nil
+	}
+
+	ss.lockMap.LockEntry(consts.VMManagementTypeLockKey)
+	defer ss.lockMap.UnlockEntry(consts.VMManagementTypeLockKey)
+	cached, err := ss.nonVmssUniformNodesCache.Get(consts.NonVmssUniformNodesKey, crt)
+	if err != nil {
+		return ManagedByUnknownVMSet, err
+	}
+
+	matches := nicIDRE.FindStringSubmatch(ipConfigurationID)
+	if len(matches) != 3 {
+		return ManagedByUnknownVMSet, fmt.Errorf("can not extract nic name from ipConfigurationID (%s)", ipConfigurationID)
+	}
+
+	nicResourceGroup, nicName := matches[1], matches[2]
+	if nicResourceGroup == "" || nicName == "" {
+		return ManagedByUnknownVMSet, fmt.Errorf("invalid ip config ID %s", ipConfigurationID)
+	}
+
+	vmName := strings.Replace(nicName, "-nic", "", 1)
+
+	cachedAvSetVMs := cached.(nonVmssUniformNodesEntry).avSetVMNodeNames
+
+	if cachedAvSetVMs.Has(vmName) {
+		return ManagedByAvSet, nil
+	}
+	return ManagedByVmssFlex, nil
 }

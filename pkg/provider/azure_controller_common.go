@@ -124,9 +124,9 @@ func (c *controllerCommon) getNodeVMSet(nodeName types.NodeName, crt azcache.Azu
 		return nil, fmt.Errorf("error of converting vmSet (%q) to ScaleSet with vmType %q", c.cloud.VMSet, c.cloud.VMType)
 	}
 
-	vmManagementType, err := ss.getVMManagementType(mapNodeNameToVMName(nodeName), crt)
+	vmManagementType, err := ss.getVMManagementTypeByNodeName(mapNodeNameToVMName(nodeName), crt)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getNodeVMSet: failed to check the node %s management type: %w", mapNodeNameToVMName(nodeName), err)
 	}
 	// 3. If the node is managed by availability set, then return ss.availabilitySet.
 	if vmManagementType == ManagedByAvSet {
