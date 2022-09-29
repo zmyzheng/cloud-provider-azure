@@ -117,15 +117,16 @@ func newScaleSet(az *Cloud) (VMSet, error) {
 		lockMap:         newLockMap(),
 	}
 
-	ss.vmssCache, err = ss.newVMSSCache()
-	if err != nil {
-		return nil, err
-	}
 	if !ss.DisableAvailabilitySetNodes || ss.EnableVmssFlexNodes {
 		ss.nonVmssUniformNodesCache, err = ss.newNonVmssUniformNodesCache()
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	ss.vmssCache, err = ss.newVMSSCache()
+	if err != nil {
+		return nil, err
 	}
 
 	return ss, nil

@@ -114,7 +114,7 @@ type ExtendedLocation struct {
 // getNodeVMSet gets the VMSet interface based on config.VMType and the real virtual machine type.
 func (c *controllerCommon) getNodeVMSet(nodeName types.NodeName, crt azcache.AzureCacheReadType) (VMSet, error) {
 	// 1. vmType is standard, return cloud.VMSet directly.
-	if c.cloud.VMType == consts.VMTypeStandard {
+	if c.cloud.VMType == consts.VMTypeStandard || c.cloud.VMType == consts.VMTypeVmssFlex {
 		return c.cloud.VMSet, nil
 	}
 
@@ -132,14 +132,15 @@ func (c *controllerCommon) getNodeVMSet(nodeName types.NodeName, crt azcache.Azu
 	if vmManagementType == ManagedByAvSet {
 		// vm is managed by availability set.
 		return ss.availabilitySet, nil
-	} else if vmManagementType == ManagedByVmssFlex {
+	}
+	if vmManagementType == ManagedByVmssFlex {
 		// 4. If the node is managed by vmss flex, then return ss.flexScaleSet.
 		// vm is managed by vmss flex.
 		return ss.flexScaleSet, nil
-	} else {
-		// 5. Node is managed by vmss
-		return ss, nil
 	}
+	// 5. Node is managed by vmss
+	return ss, nil
+
 }
 
 // AttachDisk attaches a disk to vm

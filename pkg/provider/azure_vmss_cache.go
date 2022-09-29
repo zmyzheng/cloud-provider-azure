@@ -18,7 +18,6 @@ package provider
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -32,11 +31,6 @@ import (
 
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
-)
-
-var (
-	// ErrorManagedByUnknown indicates an instance management type is unknown.
-	ErrorManagedByUnknown = errors.New("vm management type unknown")
 )
 
 type vmssVirtualMachinesEntry struct {
