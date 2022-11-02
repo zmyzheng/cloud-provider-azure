@@ -2149,13 +2149,13 @@ func (ss *ScaleSet) GetAgentPoolVMSetNames(nodes []*v1.Node) (*[]string, error) 
 
 		if vmManagementType == ManagedByAvSet {
 			// vm is managed by vmss flex.
-			klog.V(2).Infof("fount avSet node: %s", node.Name)
+			klog.V(2).Infof("found avSet node: %s", node.Name)
 			avSetVMNodes = append(avSetVMNodes, node)
 			continue
 		}
 		if vmManagementType == ManagedByVmssFlex {
 			// vm is managed by vmss flex.
-			klog.V(2).Infof("fount vmss flex node: %s", node.Name)
+			klog.V(2).Infof("found vmss flex node: %s", node.Name)
 			vmssFlexVMNodes = append(vmssFlexVMNodes, node)
 			continue
 		}
