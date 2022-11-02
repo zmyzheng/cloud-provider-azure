@@ -21,7 +21,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -140,7 +140,7 @@ func genreteTestVmssFlex() compute.VirtualMachineScaleSet {
 					},
 				},
 			},
-			OrchestrationMode: compute.OrchestrationModeFlexible,
+			OrchestrationMode: compute.Flexible,
 		},
 		Tags: map[string]*string{
 			consts.VMSetCIDRIPV4TagKey: to.StringPtr("24"),
@@ -191,7 +191,7 @@ func generateVmssFlexTestVMWithoutInstanceView(spec VmssFlexTestVMSpec) (testVMW
 				},
 			},
 			HardwareProfile: &compute.HardwareProfile{
-				VMSize: compute.VirtualMachineSizeTypesStandardD2sV3,
+				VMSize: compute.StandardD2sV3,
 			},
 			NetworkProfile: &compute.NetworkProfile{
 				NetworkInterfaces: &[]compute.NetworkInterfaceReference{
