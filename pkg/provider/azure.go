@@ -226,8 +226,6 @@ type Config struct {
 
 	// VmssCacheTTLInSeconds sets the cache TTL for VMSS
 	VmssCacheTTLInSeconds int `json:"vmssCacheTTLInSeconds,omitempty" yaml:"vmssCacheTTLInSeconds,omitempty"`
-	// VmssFlexCacheTTLDefaultInSeconds sets the cache TTL for VMSS Flex
-	VmssFlexCacheTTLDefaultInSeconds int `json:"VmssFlexCacheTTLDefaultInSeconds,omitempty" yaml:"VmssFlexCacheTTLDefaultInSeconds,omitempty"`
 
 	// VmssVirtualMachinesCacheTTLInSeconds sets the cache TTL for vmssVirtualMachines
 	VmssVirtualMachinesCacheTTLInSeconds int `json:"vmssVirtualMachinesCacheTTLInSeconds,omitempty" yaml:"vmssVirtualMachinesCacheTTLInSeconds,omitempty"`
@@ -625,12 +623,7 @@ func (az *Cloud) InitializeCloudFromConfig(config *Config, fromSecret, callFromC
 		az.MaximumLoadBalancerRuleCount = consts.MaximumLoadBalancerRuleCount
 	}
 
-	if strings.EqualFold(consts.VMTypeVmssFlex, az.Config.VMType) {
-		az.VMSet, err = newFlexScaleSet(az)
-		if err != nil {
-			return err
-		}
-	} else if strings.EqualFold(consts.VMTypeVMSS, az.Config.VMType) {
+	if strings.EqualFold(consts.VMTypeVMSS, az.Config.VMType) {
 		az.VMSet, err = newScaleSet(az)
 		if err != nil {
 			return err

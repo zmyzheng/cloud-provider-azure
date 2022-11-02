@@ -142,6 +142,7 @@ func (c *controllerCommon) getNodeVMSet(nodeName types.NodeName, crt azcache.Azu
 		// vm is managed by vmss flex.
 		return ss.flexScaleSet, nil
 	}
+
 	// 5. Node is managed by vmss
 	return ss, nil
 
