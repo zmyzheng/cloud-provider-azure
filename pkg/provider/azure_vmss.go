@@ -1989,6 +1989,7 @@ func (ss *ScaleSet) EnsureBackendPoolDeleted(service *v1.Service, backendPoolID,
 	// make sure all vmss including uniform and flex are decoupled from
 	// the lb backend pool even if there is no ipConfigs in the backend pool.
 	if deleteFromVMSet {
+		klog.V(2).Infof("--------calling ss.EnsureBackendPoolDeleted, deleteFromVMSet: %s-------)", deleteFromVMSet)
 		err := ss.ensureBackendPoolDeletedFromVMSS(backendPoolID, vmSetName)
 		if err != nil {
 			return err

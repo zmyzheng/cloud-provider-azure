@@ -1062,6 +1062,7 @@ func (fs *FlexScaleSet) EnsureBackendPoolDeleted(service *v1.Service, backendPoo
 
 	// 1. Ensure the backendPoolID is deleted from the VMSS.
 	klog.V(2).Infof("1. Ensure the backendPoolID is deleted from the VMSS.")
+	klog.V(2).Infof("deleteFromVMSet: %s", deleteFromVMSet)
 	if deleteFromVMSet {
 		err := fs.ensureBackendPoolDeletedFromVmssFlex(backendPoolID, vmSetName)
 		if err != nil {
