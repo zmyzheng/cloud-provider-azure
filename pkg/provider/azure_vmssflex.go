@@ -676,7 +676,7 @@ func (fs *FlexScaleSet) EnsureHostInPool(service *v1.Service, nodeName types.Nod
 }
 
 func (fs *FlexScaleSet) ensureVMSSFlexInPool(service *v1.Service, nodes []*v1.Node, backendPoolID string, vmSetNameOfLB string) error {
-	klog.V(2).Infof("ensureVMSSInPool: ensuring VMSS Flex with backendPoolID %s", backendPoolID)
+	klog.V(2).Infof("ensureVMSSFlexInPool: ensuring VMSS Flex with backendPoolID %s", backendPoolID)
 	vmssFlexIDsMap := make(map[string]bool)
 
 	if !fs.useStandardLoadBalancer() {
@@ -727,7 +727,7 @@ func (fs *FlexScaleSet) ensureVMSSFlexInPool(service *v1.Service, nodes []*v1.No
 		vmssFlexIDsMap[vmssFlexID] = true
 	}
 
-	klog.V(2).Infof("ensureVMSSInPool begins to update VMSS list %v with backendPoolID %s", vmssFlexIDsMap, backendPoolID)
+	klog.V(2).Infof("ensureVMSSFlexInPool begins to update VMSS Flex list %v with backendPoolID %s", vmssFlexIDsMap, backendPoolID)
 	for vmssFlexID := range vmssFlexIDsMap {
 		vmssFlex, err := fs.getVmssFlexByVmssFlexID(vmssFlexID, azcache.CacheReadTypeDefault)
 		if err != nil {
@@ -738,12 +738,12 @@ func (fs *FlexScaleSet) ensureVMSSFlexInPool(service *v1.Service, nodes []*v1.No
 		// When vmss is being deleted, CreateOrUpdate API would report "the vmss is being deleted" error.
 		// Since it is being deleted, we shouldn't send more CreateOrUpdate requests for it.
 		if vmssFlex.ProvisioningState != nil && strings.EqualFold(*vmssFlex.ProvisioningState, consts.VirtualMachineScaleSetsDeallocating) {
-			klog.V(3).Infof("ensureVMSSInPool: found vmss %s being deleted, skipping", vmssFlexID)
+			klog.V(2).Infof("ensureVMSSFlexInPool: found vmss %s being deleted, skipping", vmssFlexID)
 			continue
 		}
 
 		if vmssFlex.VirtualMachineProfile == nil || vmssFlex.VirtualMachineProfile.NetworkProfile == nil || vmssFlex.VirtualMachineProfile.NetworkProfile.NetworkInterfaceConfigurations == nil {
-			klog.V(4).Infof("EnsureHostInPool: cannot obtain the primary network interface configuration of vmss %s, just skip it as it might not have default vm profile", vmssFlexID)
+			klog.V(2).Infof("ensureVMSSFlexInPool: cannot obtain the primary network interface configuration of vmss %s, just skip it as it might not have default vm profile", vmssFlexID)
 			continue
 		}
 		vmssNIC := *vmssFlex.VirtualMachineProfile.NetworkProfile.NetworkInterfaceConfigurations
@@ -829,10 +829,10 @@ func (fs *FlexScaleSet) ensureVMSSFlexInPool(service *v1.Service, nodes []*v1.No
 			}()
 		*/
 
-		klog.V(2).Infof("ensureVMSSInPool begins to update vmss(%s) with new backendPoolID %s", vmssFlexName, backendPoolID)
+		klog.V(2).Infof("ensureVMSSFlexInPool begins to update vmss(%s) with new backendPoolID %s", vmssFlexName, backendPoolID)
 		rerr := fs.CreateOrUpdateVMSS(fs.ResourceGroup, vmssFlexName, newVMSS)
 		if rerr != nil {
-			klog.Errorf("ensureVMSSInPool CreateOrUpdateVMSS(%s) with new backendPoolID %s, err: %v", vmssFlexName, backendPoolID, err)
+			klog.Errorf("ensureVMSSFlexInPool CreateOrUpdateVMSS(%s) with new backendPoolID %s, err: %v", vmssFlexName, backendPoolID, err)
 			return rerr.Error()
 		}
 	}
