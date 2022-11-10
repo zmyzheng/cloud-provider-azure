@@ -342,7 +342,7 @@ func (fs *FlexScaleSet) GetPrimaryInterface(nodeName string) (network.Interface,
 		klog.Errorf("fs.InterfacesClient.Get failed with error: %v", rerr)
 		return network.Interface{}, rerr.Error()
 	}
-	klog.V(2).Infof(" fs.GetPrimaryInterface returns %q", nic)
+	//klog.V(2).Infof(" fs.GetPrimaryInterface returns %q", nic)
 	return nic, nil
 }
 
@@ -801,7 +801,7 @@ func (fs *FlexScaleSet) ensureVMSSFlexInPool(service *v1.Service, nodes []*v1.No
 				return err
 			}
 			if !isSameLB {
-				klog.V(4).Infof("VMSS %q has already been added to LB %q, omit adding it to a new one", vmssFlexID, oldLBName)
+				klog.V(2).Infof("VMSS %q has already been added to LB %q, omit adding it to a new one", vmssFlexID, oldLBName)
 				return nil
 			}
 		}
@@ -1014,7 +1014,7 @@ func (fs *FlexScaleSet) EnsureBackendPoolDeletedFromVMSets(vmssNamesMap map[stri
 
 // EnsureBackendPoolDeleted ensures the loadBalancer backendAddressPools deleted from the specified nodes.
 func (fs *FlexScaleSet) EnsureBackendPoolDeleted(service *v1.Service, backendPoolID, vmSetName string, backendAddressPools *[]network.BackendAddressPool, deleteFromVMSet bool) error {
-	klog.V(2).Infof("calling fs.EnsureBackendPoolDeleted(%s, %s, %s, %q)", service.Name, backendPoolID, vmSetName, backendAddressPools)
+	klog.V(2).Infof("calling fs.EnsureBackendPoolDeleted(%s, %s, %s, %s)", service.Name, backendPoolID, vmSetName, backendAddressPools)
 
 	// Returns nil if backend address pools already deleted.
 	if backendAddressPools == nil {
