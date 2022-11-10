@@ -829,12 +829,13 @@ func (fs *FlexScaleSet) ensureVMSSFlexInPool(service *v1.Service, nodes []*v1.No
 			}()
 		*/
 
-		klog.V(2).Infof("ensureVMSSFlexInPool begins to update vmss(%s) with new backendPoolID %s", vmssFlexName, backendPoolID)
+		klog.V(2).Infof("ensureVMSSFlexInPool begins to add vmss(%s) with new backendPoolID %s", vmssFlexName, backendPoolID)
 		rerr := fs.CreateOrUpdateVMSS(fs.ResourceGroup, vmssFlexName, newVMSS)
 		if rerr != nil {
 			klog.Errorf("ensureVMSSFlexInPool CreateOrUpdateVMSS(%s) with new backendPoolID %s, err: %v", vmssFlexName, backendPoolID, err)
 			return rerr.Error()
 		}
+		klog.V(2).Infof("ensureVMSSFlexInPool fnish to add vmss(%s) with new backendPoolID %s", vmssFlexName, backendPoolID)
 	}
 	return nil
 
@@ -989,13 +990,13 @@ func (fs *FlexScaleSet) EnsureBackendPoolDeletedFromVMSets(vmssNamesMap map[stri
 				}()
 			*/
 
-			klog.V(2).Infof("fs.EnsureBackendPoolDeletedFromVMSets begins to update vmss(%s) with backendPoolID %s", vmssName, backendPoolID)
+			klog.V(2).Infof("fs.EnsureBackendPoolDeletedFromVMSets begins to update vmss(%s) to delete backendPoolID %s", vmssName, backendPoolID)
 			rerr := fs.CreateOrUpdateVMSS(fs.ResourceGroup, vmssName, newVMSS)
 			if rerr != nil {
-				klog.Errorf("fs.EnsureBackendPoolDeletedFromVMSets CreateOrUpdateVMSS(%s) with new backendPoolID %s, err: %v", vmssName, backendPoolID, rerr)
+				klog.Errorf("fs.EnsureBackendPoolDeletedFromVMSets CreateOrUpdateVMSS(%s) to delete backendPoolID %s, err: %v", vmssName, backendPoolID, rerr)
 				return rerr.Error()
 			}
-
+			klog.V(2).Infof("fs.EnsureBackendPoolDeletedFromVMSets finishes to update vmss(%s) to delete backendPoolID %s", vmssName, backendPoolID)
 			return nil
 		})
 	}
